@@ -1,0 +1,10 @@
+version: '3.8'
+
+services:
+  nezha-exporter:
+    build: .
+    container_name: nezha-exporter
+    environment:
+      WS_URL: wss://nezha.example.com/api/v1/ws/server #设置ws地址
+    ports:
+      - "8009:8080" #设置端口 8009

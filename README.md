@@ -83,6 +83,8 @@
 
 - 推荐将 `/latest_message.prom` 接口作为 Prometheus 的 scrape target，采集 Nezha 监控数据并在 Grafana 等平台展示。
 
+- Grafana 演示地址：[Nezha 监控数据 Dashboard 示例](https://grafana2.moeyuuko.com/d/edsum8gy9f08we/nezha)
+
 ## 贡献方式
 
 欢迎提交 issue 或 PR 改进本项目。

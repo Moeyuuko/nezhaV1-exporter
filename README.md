@@ -25,14 +25,28 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A[接收 WS 数据] --> B[解析并缓存数据]
+    A[接收 WS 数据] --> B[解析服务器数据]
+    B --> B1{"检测 uptime 变化"}
+    B1 -- "有变化" --> B2[更新时间戳]
+    B1 -- "无变化" --> B3[跳过时间戳更新]
+    B2 --> B4[缓存服务器数据]
+    B3 --> B4
     G[获取分组信息] --> H[group_map 缓存]
-    H -.-> B
-    B --> C{"请求类型"}
-    C -- "/latest_message.json" --> D[返回最新 JSON]
-    C -- "/latest_message.prom" --> E[返回 Prometheus 格式]
-    C -- "/metrics" --> E
+    H -.-> B4
+    B4 --> C{"请求类型"}
+    C -- "/latest_message.json" --> D[过滤过期服务器]
+    C -- "/latest_message.prom" --> D
+    C -- "/metrics" --> D
+    D --> E["返回数据<br/>(JSON 或 Prometheus 格式)"]
 ```
+
+### 数据过期机制
+
+- 通过检测 `uptime` 是否变化来判断服务器是否真正在线
+- 服务器离线后，`uptime` 停止变化，超过 60 秒后该服务器的指标自动从输出中移除
+- 服务器重新上线后，指标自动恢复
+
+> 详细的数据处理流程请参阅 [nezha-exporter.md](nezha-exporter.md)
 
 ## 依赖要求
 
@@ -106,8 +120,8 @@ flowchart TD
 
 | 端点路径 | 响应类型 | 说明 |
 |---------|---------|------|
-| `/latest_message.json` | application/json | 返回最新的原始 JSON 数据 |
-| `/latest_message.prom` | text/plain | 返回 Prometheus 格式的指标数据 |
+| `/latest_message.json` | application/json | 返回 JSON 格式数据（已过滤过期服务器） |
+| `/latest_message.prom` | text/plain | 返回 Prometheus 格式的指标数据（已过滤过期服务器） |
 | `/metrics` | text/plain | 同 `/latest_message.prom`，用于 Prometheus 抓取 |
 
 ## 配置说明

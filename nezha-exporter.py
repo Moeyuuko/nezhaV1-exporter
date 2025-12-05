@@ -3,14 +3,30 @@ import websockets
 import json
 from aiohttp import web, ClientSession
 import os
+import time
 
 group_map = {}  # 服务器ID到分组名映射
+server_last_update = {}  # 服务器ID到最后更新时间的映射
+server_data_cache = {}  # 服务器ID到服务器数据的缓存
+server_last_uptime = {}  # 服务器ID到上次uptime值的映射，用于检测数据是否真正更新
+DATA_EXPIRE_SECONDS = 60  # 数据过期时间（秒）
 
-def convert_to_prometheus_text(data):
+def convert_to_prometheus_text():
+    """从缓存中生成 Prometheus 指标，自动过滤过期的服务器数据"""
+    current_time = time.time()
     lines = []
-    lines.append(f'nezha_online {data.get("online", 0)}')
-    servers = data.get("servers", [])
-    for server in servers:
+    
+    # 过滤出未过期的服务器
+    active_servers = []
+    for sid, server in server_data_cache.items():
+        last_update = server_last_update.get(sid, 0)
+        if current_time - last_update <= DATA_EXPIRE_SECONDS:
+            active_servers.append(server)
+    
+    # 在线服务器数量（只统计未过期的）
+    lines.append(f'nezha_online {len(active_servers)}')
+    
+    for server in active_servers:
         sid = server.get("id", 0)
         name = server.get("name", "")
         host = server.get("host", {})
@@ -61,8 +77,27 @@ def convert_to_prometheus_text(data):
                 lines.append(f'nezha_temperature{{id="{sid}",name="{name}",group="{group_name}",temp_name="{temp_name}"}} {temp_value}')
 
     return "\n".join(lines)
+
+def get_filtered_json_data():
+    """生成过滤过期服务器后的 JSON 数据"""
+    current_time = time.time()
+    
+    # 过滤出未过期的服务器
+    active_servers = []
+    for sid, server in server_data_cache.items():
+        last_update = server_last_update.get(sid, 0)
+        if current_time - last_update <= DATA_EXPIRE_SECONDS:
+            active_servers.append(server)
+    
+    # 构建过滤后的数据结构
+    filtered_data = {
+        "online": len(active_servers),
+        "servers": active_servers
+    }
+    
+    return json.dumps(filtered_data, indent=4, ensure_ascii=False)
+
 latest_json_data = None
-latest_prom_data = None
 
 async def fetch_groups(url):
     global group_map
@@ -90,7 +125,7 @@ async def fetch_groups(url):
         await asyncio.sleep(60)  # 每60秒刷新一次分组信息
 
 async def listen(url):
-    global latest_json_data, latest_prom_data
+    global latest_json_data, server_data_cache, server_last_update
     while True:
         try:
             async with websockets.connect(url) as websocket:
@@ -101,9 +136,27 @@ async def listen(url):
                         try:
                             data = json.loads(message)
                             formatted = json.dumps(data, indent=4, ensure_ascii=False)
-                            global latest_json_data, latest_prom_data
                             latest_json_data = formatted
-                            latest_prom_data = convert_to_prometheus_text(data)
+                            
+                            # 更新服务器数据缓存和最后更新时间
+                            current_time = time.time()
+                            servers = data.get("servers", [])
+                            for server in servers:
+                                sid = server.get("id", 0)
+                                state = server.get("state", {})
+                                current_uptime = state.get("uptime", 0)
+                                
+                                # 获取上次的 uptime 值
+                                last_uptime = server_last_uptime.get(sid, -1)
+                                
+                                # 只有当 uptime 发生变化时才更新时间戳
+                                # uptime 变化说明服务器真正在线并上报了新数据
+                                if current_uptime != last_uptime:
+                                    server_last_update[sid] = current_time
+                                    server_last_uptime[sid] = current_uptime
+                                
+                                # 始终更新数据缓存（保留最新收到的数据）
+                                server_data_cache[sid] = server
                         except json.JSONDecodeError:
                             print("Received non-JSON message:", message, flush=True)
                     except Exception as e:
@@ -118,14 +171,18 @@ async def listen(url):
             await asyncio.sleep(5)
 
 async def handle_latest_json(request):
-    if latest_json_data is None:
+    if not server_data_cache:
         return web.Response(text="No data yet", status=503)
-    return web.Response(text=latest_json_data, content_type='application/json')
+    # 每次请求时动态生成 JSON，自动过滤过期数据
+    json_data = get_filtered_json_data()
+    return web.Response(text=json_data, content_type='application/json')
 
 async def handle_latest_prom(request):
-    if latest_prom_data is None:
+    if not server_data_cache:
         return web.Response(text="No data yet", status=503)
-    return web.Response(text=latest_prom_data, content_type='text/plain')
+    # 每次请求时动态生成指标，自动过滤过期数据
+    prom_data = convert_to_prometheus_text()
+    return web.Response(text=prom_data, content_type='text/plain')
 
 async def start_web_server():
     app = web.Application()
@@ -146,7 +203,7 @@ async def main(url, group_url):
     )
 
 if __name__ == "__main__":
-    print("Version：0.0.0", flush=True)
+    print("Version：0.0.2", flush=True)
     print("Starting nezha-exporter...", flush=True)
     url = os.getenv("WS_URL")
     group_url = os.getenv("GROUP_URL")

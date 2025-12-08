@@ -259,6 +259,7 @@ flowchart TD
 | 0.0.3 | 添加 HTTP Basic Auth 认证支持（可选），兼容不同版本 websockets 库 |
 | 0.0.4 | 将 `nezha_online` 改为 WebSocket 返回的原始在线人数，新增 `nezha_online_server` 表示活跃服务器数量 |
 | 0.0.5 | JSON 输出添加服务器分组信息（`group` 字段） |
+| 0.0.6 | 修复认证参数传递问题（从全局变量改为函数参数传递），添加更详细的调试日志 |
 
 ## 文档流程图注意规格：
 > **⚠️ Mermaid 语法注意事项**

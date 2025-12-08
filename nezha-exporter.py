@@ -124,10 +124,11 @@ def get_filtered_json_data():
 
 latest_json_data = None
 
-async def fetch_groups(url):
+async def fetch_groups(url, username=None, password=None):
     global group_map
     # 创建 BasicAuth 对象（如果有认证信息）
-    auth = BasicAuth(auth_username, auth_password) if auth_username and auth_password else None
+    auth = BasicAuth(username, password) if username and password else None
+    print(f"fetch_groups: auth={'enabled' if auth else 'disabled'}", flush=True)
     while True:
         try:
             async with ClientSession() as session:
@@ -144,19 +145,21 @@ async def fetch_groups(url):
                             group_map = new_map
                             print(f"Fetched and updated group map: {group_map}", flush=True)
                         else:
-                            print(f"Failed to fetch groups: success=false", flush=True)
+                            # 打印完整响应以便调试
+                            print(f"Failed to fetch groups: success=false, response: {json_data}", flush=True)
                     else:
-                        print(f"Failed to fetch groups: HTTP {resp.status}", flush=True)
+                        error_text = await resp.text()
+                        print(f"Failed to fetch groups: HTTP {resp.status}, response: {error_text}", flush=True)
         except Exception as e:
             print(f"Error fetching groups: {e}", flush=True)
         await asyncio.sleep(60)  # 每60秒刷新一次分组信息
 
-async def listen(url):
+async def listen(url, username=None, password=None):
     global latest_json_data, server_data_cache, server_last_update, ws_online_count
     # 为 WebSocket 创建认证 headers 的 kwargs（兼容不同版本的 websockets 库）
     ws_kwargs = {}
-    if auth_username and auth_password:
-        credentials = base64.b64encode(f"{auth_username}:{auth_password}".encode()).decode()
+    if username and password:
+        credentials = base64.b64encode(f"{username}:{password}".encode()).decode()
         headers = {"Authorization": f"Basic {credentials}"}
         # 根据 websockets 版本选择正确的参数名
         header_param = get_websocket_headers_param()
@@ -237,23 +240,23 @@ async def start_web_server():
     await site.start()
     print("HTTP server started on port 8080", flush=True)
 
-async def main(url, group_url):
+async def main(url, group_url, username=None, password=None):
     await asyncio.gather(
-        listen(url),
-        fetch_groups(group_url),
+        listen(url, username, password),
+        fetch_groups(group_url, username, password),
         start_web_server()
     )
 
 if __name__ == "__main__":
-    print("Version：0.0.5", flush=True)
+    print("Version：0.0.6", flush=True)
     print("Starting nezha-exporter...", flush=True)
     url = os.getenv("WS_URL")
     group_url = os.getenv("GROUP_URL")
-    auth_username = os.getenv("AUTH_USERNAME")
-    auth_password = os.getenv("AUTH_PASSWORD")
+    username = os.getenv("AUTH_USERNAME")
+    password = os.getenv("AUTH_PASSWORD")
     print(f"WS_URL={url}", flush=True)
     print(f"GROUP_URL={group_url}", flush=True)
-    if auth_username and auth_password:
+    if username and password:
         print("Basic Auth: enabled", flush=True)
     else:
         print("Basic Auth: disabled (no credentials provided)", flush=True)
@@ -263,4 +266,4 @@ if __name__ == "__main__":
     if not group_url:
         print("Error: GROUP_URL environment variable is not set.", flush=True)
         exit(1)
-    asyncio.run(main(url, group_url))
+    asyncio.run(main(url, group_url, username, password))

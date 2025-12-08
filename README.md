@@ -32,12 +32,13 @@ flowchart TD
     B2 --> B4[缓存服务器数据]
     B3 --> B4
     G[获取分组信息] --> H[group_map 缓存]
-    H -.-> B4
     B4 --> C{"请求类型"}
     C -- "/latest_message.json" --> D[过滤过期服务器]
     C -- "/latest_message.prom" --> D
     C -- "/metrics" --> D
-    D --> E["返回数据<br/>(JSON 或 Prometheus 格式)"]
+    D --> D1[添加分组信息]
+    H -.-> D1
+    D1 --> E["返回数据<br/>(含分组信息)"]
 ```
 
 ### 数据过期机制
@@ -120,8 +121,8 @@ flowchart TD
 
 | 端点路径 | 响应类型 | 说明 |
 |---------|---------|------|
-| `/latest_message.json` | application/json | 返回 JSON 格式数据（已过滤过期服务器） |
-| `/latest_message.prom` | text/plain | 返回 Prometheus 格式的指标数据（已过滤过期服务器） |
+| `/latest_message.json` | application/json | 返回 JSON 格式数据（已过滤过期服务器，包含分组信息） |
+| `/latest_message.prom` | text/plain | 返回 Prometheus 格式的指标数据（已过滤过期服务器，包含分组标签） |
 | `/metrics` | text/plain | 同 `/latest_message.prom`，用于 Prometheus 抓取 |
 
 ## 配置说明

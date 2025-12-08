@@ -20,23 +20,20 @@ flowchart TD
     end
     
     subgraph 数据缓存 ["数据缓存"]
-        UPDATE --> JSON_CACHE["latest_json_data<br/>JSON 格式缓存"]
         UPDATE --> SERVER_CACHE["server_data_cache<br/>服务器ID → 服务器数据"]
         UPDATE --> TIME_CACHE["server_last_update<br/>服务器ID → 最后更新时间"]
-        GMAP -.-> PROM_GEN
     end
     
-    subgraph 动态生成 ["动态数据生成（请求时）"]
-        SERVER_CACHE --> FILTER["过滤过期数据<br/>超过60秒未更新的服务器"]
-        TIME_CACHE --> FILTER
-        FILTER --> JSON_GEN["get_filtered_json_data()<br/>生成 JSON 数据"]
-        FILTER --> PROM_GEN["convert_to_prometheus_text()<br/>生成 Prometheus 指标"]
-    end
+    SERVER_CACHE --> FILTER["过滤过期数据<br/>超过60秒未更新的服务器"]
+    TIME_CACHE --> FILTER
+    FILTER --> ADD_GROUP["添加分组信息<br/>从 group_map 获取"]
+    GMAP -.-> ADD_GROUP
+    ADD_GROUP --> OUTPUT["格式化输出"]
     
     subgraph HTTP服务 ["HTTP 服务 (端口 8080)"]
-        JSON_GEN --> EP1["/latest_message.json"]
-        PROM_GEN --> EP2["/latest_message.prom"]
-        PROM_GEN --> EP3["/metrics"]
+        OUTPUT --> EP1["/latest_message.json<br/>JSON 格式"]
+        OUTPUT --> EP2["/latest_message.prom<br/>Prometheus 格式"]
+        OUTPUT --> EP3["/metrics<br/>Prometheus 格式"]
     end
 ```
 
@@ -145,21 +142,26 @@ flowchart TD
     STATE --> S12["temperatures - 温度数组"]
 ```
 
-### 指标生成流程（每次请求时执行）
+### 数据生成流程（每次请求时执行）
+
+JSON 端点和 Prometheus 端点共享相同的数据处理逻辑，仅输出格式不同：
 
 ```mermaid
 flowchart TD
-    K["收到 /metrics 请求"] --> K1["获取当前时间"]
-    K1 --> K2["遍历 server_data_cache"]
-    K2 --> K3{"检查服务器过期状态<br/>当前时间 - 最后更新时间"}
-    K3 -- "<= 60秒（活跃）" --> K4["生成该服务器指标"]
-    K3 -- "> 60秒（过期）" --> K5["跳过该服务器"]
-    K4 --> K6["继续下一个服务器"]
-    K5 --> K6
-    K6 --> K7{"还有更多服务器?"}
-    K7 -- "是" --> K2
-    K7 -- "否" --> K8["汇总所有活跃服务器指标"]
-    K8 --> K9["返回 Prometheus 格式文本"]
+    A["收到 HTTP 请求<br/>/latest_message.json 或 /metrics"] --> B["获取当前时间"]
+    B --> C["遍历 server_data_cache"]
+    C --> D{"检查服务器过期状态<br/>当前时间 - 最后更新时间"}
+    D -- "<= 60秒（活跃）" --> E["从 group_map 获取分组名"]
+    D -- "> 60秒（过期）" --> F["跳过该服务器"]
+    E --> G["添加分组信息到服务器数据"]
+    G --> H["加入活跃服务器列表"]
+    F --> I["继续下一个服务器"]
+    H --> I
+    I --> J{"还有更多服务器?"}
+    J -- "是" --> C
+    J -- "否" --> K{"请求端点类型"}
+    K -- "/latest_message.json" --> L["输出 JSON 格式<br/>包含 group 字段"]
+    K -- "/metrics 或 /latest_message.prom" --> M["输出 Prometheus 格式<br/>包含 group 标签"]
 ```
 
 ## 分组信息获取流程
@@ -236,8 +238,8 @@ flowchart TD
 
 | 端点路径 | 响应类型 | 说明 |
 |---------|---------|------|
-| `/latest_message.json` | application/json | 返回 JSON 格式数据（已过滤过期服务器） |
-| `/latest_message.prom` | text/plain | 返回 Prometheus 格式的指标数据（已过滤过期服务器） |
+| `/latest_message.json` | application/json | 返回 JSON 格式数据（已过滤过期服务器，包含分组信息） |
+| `/latest_message.prom` | text/plain | 返回 Prometheus 格式的指标数据（已过滤过期服务器，包含分组标签） |
 | `/metrics` | text/plain | 同 `/latest_message.prom`，用于 Prometheus 抓取 |
 
 ## 错误处理
@@ -256,6 +258,7 @@ flowchart TD
 | 0.0.2 | 优化离线检测：使用 `uptime` 变化判断服务器是否真正在线 |
 | 0.0.3 | 添加 HTTP Basic Auth 认证支持（可选），兼容不同版本 websockets 库 |
 | 0.0.4 | 将 `nezha_online` 改为 WebSocket 返回的原始在线人数，新增 `nezha_online_server` 表示活跃服务器数量 |
+| 0.0.5 | JSON 输出添加服务器分组信息（`group` 字段） |
 
 ## 文档流程图注意规格：
 > **⚠️ Mermaid 语法注意事项**

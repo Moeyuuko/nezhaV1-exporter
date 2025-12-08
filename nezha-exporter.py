@@ -104,12 +104,15 @@ def get_filtered_json_data():
     """生成过滤过期服务器后的 JSON 数据"""
     current_time = time.time()
     
-    # 过滤出未过期的服务器
+    # 过滤出未过期的服务器，并添加分组信息
     active_servers = []
     for sid, server in server_data_cache.items():
         last_update = server_last_update.get(sid, 0)
         if current_time - last_update <= DATA_EXPIRE_SECONDS:
-            active_servers.append(server)
+            # 复制服务器数据并添加分组信息
+            server_with_group = server.copy()
+            server_with_group["group"] = group_map.get(sid, "unknown")
+            active_servers.append(server_with_group)
     
     # 构建过滤后的数据结构
     filtered_data = {
@@ -242,7 +245,7 @@ async def main(url, group_url):
     )
 
 if __name__ == "__main__":
-    print("Version：0.0.4", flush=True)
+    print("Version：0.0.5", flush=True)
     print("Starting nezha-exporter...", flush=True)
     url = os.getenv("WS_URL")
     group_url = os.getenv("GROUP_URL")

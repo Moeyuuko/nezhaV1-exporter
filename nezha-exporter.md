@@ -193,6 +193,7 @@ flowchart TD
 | `server_data_cache` | Dict[int, dict] | 服务器ID → 服务器完整数据 |
 | `server_last_update` | Dict[int, float] | 服务器ID → 最后更新时间戳（Unix时间） |
 | `server_last_uptime` | Dict[int, int] | 服务器ID → 上次 uptime 值（用于检测数据是否真正更新） |
+| `ws_online_count` | int | WebSocket 返回的在线人数（原始值，不与服务器关联） |
 | `latest_json_data` | str | 最新的原始 JSON 数据字符串 |
 | `DATA_EXPIRE_SECONDS` | int | 数据过期时间，默认 60 秒 |
 
@@ -200,7 +201,8 @@ flowchart TD
 
 | 指标名称 | 类型 | 标签 | 说明 |
 |---------|------|------|------|
-| `nezha_online` | Gauge | 无 | 在线用户数 |
+| `nezha_online` | Gauge | 无 | WebSocket 返回的在线人数（原始值，不与服务器关联） |
+| `nezha_online_server` | Gauge | 无 | 经过过期过滤后的活跃服务器数量 |
 | `nezha_boot_time` | Gauge | id, name, group | 系统启动时间戳 |
 | `nezha_mem_total` | Gauge | id, name, group | 总内存（字节） |
 | `nezha_disk_total` | Gauge | id, name, group | 总磁盘空间（字节） |
@@ -253,6 +255,7 @@ flowchart TD
 | 0.0.1 | 添加数据过期机制，服务器离线超过60秒后自动移除其指标数据 |
 | 0.0.2 | 优化离线检测：使用 `uptime` 变化判断服务器是否真正在线 |
 | 0.0.3 | 添加 HTTP Basic Auth 认证支持（可选），兼容不同版本 websockets 库 |
+| 0.0.4 | 将 `nezha_online` 改为 WebSocket 返回的原始在线人数，新增 `nezha_online_server` 表示活跃服务器数量 |
 
 ## 文档流程图注意规格：
 > **⚠️ Mermaid 语法注意事项**

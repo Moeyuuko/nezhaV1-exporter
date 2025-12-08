@@ -11,6 +11,7 @@ server_last_update = {}  # 服务器ID到最后更新时间的映射
 server_data_cache = {}  # 服务器ID到服务器数据的缓存
 server_last_uptime = {}  # 服务器ID到上次uptime值的映射，用于检测数据是否真正更新
 DATA_EXPIRE_SECONDS = 60  # 数据过期时间（秒）
+ws_online_count = 0  # WebSocket 返回的在线人数（原始值，不与服务器关联）
 
 # Basic Auth 认证信息（可选）
 auth_username = None
@@ -42,8 +43,10 @@ def convert_to_prometheus_text():
         if current_time - last_update <= DATA_EXPIRE_SECONDS:
             active_servers.append(server)
     
+    # WebSocket 返回的在线人数（原始值，不与服务器关联）
+    lines.append(f'nezha_online {ws_online_count}')
     # 在线服务器数量（只统计未过期的）
-    lines.append(f'nezha_online {len(active_servers)}')
+    lines.append(f'nezha_online_server {len(active_servers)}')
     
     for server in active_servers:
         sid = server.get("id", 0)
@@ -146,7 +149,7 @@ async def fetch_groups(url):
         await asyncio.sleep(60)  # 每60秒刷新一次分组信息
 
 async def listen(url):
-    global latest_json_data, server_data_cache, server_last_update
+    global latest_json_data, server_data_cache, server_last_update, ws_online_count
     # 为 WebSocket 创建认证 headers 的 kwargs（兼容不同版本的 websockets 库）
     ws_kwargs = {}
     if auth_username and auth_password:
@@ -170,6 +173,9 @@ async def listen(url):
                             data = json.loads(message)
                             formatted = json.dumps(data, indent=4, ensure_ascii=False)
                             latest_json_data = formatted
+                            
+                            # 更新 WebSocket 返回的在线人数
+                            ws_online_count = data.get("online", 0)
                             
                             # 更新服务器数据缓存和最后更新时间
                             current_time = time.time()
@@ -236,7 +242,7 @@ async def main(url, group_url):
     )
 
 if __name__ == "__main__":
-    print("Version：0.0.3", flush=True)
+    print("Version：0.0.4", flush=True)
     print("Starting nezha-exporter...", flush=True)
     url = os.getenv("WS_URL")
     group_url = os.getenv("GROUP_URL")

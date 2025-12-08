@@ -130,6 +130,40 @@ flowchart TD
 |---------|------|------|
 | `WS_URL` | 是 | 哪吒监控 WebSocket 地址，例如 `wss://nezha.example.com/api/v1/ws/server` |
 | `GROUP_URL` | 是 | 分组信息 API 地址，例如 `https://nezha.example.com/api/v1/server-group` |
+| `AUTH_USERNAME` | 否 | Basic Auth 用户名（与 `AUTH_PASSWORD` 同时设置时生效） |
+| `AUTH_PASSWORD` | 否 | Basic Auth 密码（与 `AUTH_USERNAME` 同时设置时生效） |
+
+### Basic Auth 认证
+
+如果你的 Nezha 监控平台启用了 HTTP Basic Auth 认证，可以通过设置 `AUTH_USERNAME` 和 `AUTH_PASSWORD` 环境变量来传入认证信息。
+
+**Docker 运行示例：**
+
+```bash
+docker run -d --name nezha-exporter \
+  -e WS_URL=wss://nezha.example.com/api/v1/ws/server \
+  -e GROUP_URL=https://nezha.example.com/api/v1/server-group \
+  -e AUTH_USERNAME=your_username \
+  -e AUTH_PASSWORD=your_password \
+  -p 8009:8080 nezha-exporter
+```
+
+**Docker Compose 示例：**
+
+```yaml
+services:
+  nezha-exporter:
+    build: .
+    environment:
+      WS_URL: wss://nezha.example.com/api/v1/ws/server
+      GROUP_URL: https://nezha.example.com/api/v1/server-group
+      AUTH_USERNAME: your_username
+      AUTH_PASSWORD: your_password
+    ports:
+      - "8009:8080"
+```
+
+> 注意：只有当 `AUTH_USERNAME` 和 `AUTH_PASSWORD` 都设置时，才会启用 Basic Auth 认证。如果只设置其中一个或都不设置，则不使用认证。
 
 ## 监控平台集成
 

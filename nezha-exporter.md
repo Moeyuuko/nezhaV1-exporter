@@ -227,6 +227,8 @@ flowchart TD
 |-------|------|------|
 | `WS_URL` | 是 | 哪吒监控 WebSocket 地址 |
 | `GROUP_URL` | 是 | 分组信息 API 地址 |
+| `AUTH_USERNAME` | 否 | Basic Auth 用户名（与 `AUTH_PASSWORD` 同时设置时生效） |
+| `AUTH_PASSWORD` | 否 | Basic Auth 密码（与 `AUTH_USERNAME` 同时设置时生效） |
 
 ## HTTP 端点
 
@@ -250,6 +252,7 @@ flowchart TD
 | 0.0.0 | 初始版本 |
 | 0.0.1 | 添加数据过期机制，服务器离线超过60秒后自动移除其指标数据 |
 | 0.0.2 | 优化离线检测：使用 `uptime` 变化判断服务器是否真正在线 |
+| 0.0.3 | 添加 HTTP Basic Auth 认证支持（可选），兼容不同版本 websockets 库 |
 
 ## 文档流程图注意规格：
 > **⚠️ Mermaid 语法注意事项**

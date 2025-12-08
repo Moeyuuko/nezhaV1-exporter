@@ -1,15 +1,34 @@
 import asyncio
 import websockets
 import json
-from aiohttp import web, ClientSession
+from aiohttp import web, ClientSession, BasicAuth
 import os
 import time
+import base64
 
 group_map = {}  # 服务器ID到分组名映射
 server_last_update = {}  # 服务器ID到最后更新时间的映射
 server_data_cache = {}  # 服务器ID到服务器数据的缓存
 server_last_uptime = {}  # 服务器ID到上次uptime值的映射，用于检测数据是否真正更新
 DATA_EXPIRE_SECONDS = 60  # 数据过期时间（秒）
+
+# Basic Auth 认证信息（可选）
+auth_username = None
+auth_password = None
+
+def get_websocket_headers_param():
+    """返回 websockets.connect() 用于传递 headers 的参数名（兼容不同版本）"""
+    version = getattr(websockets, '__version__', '0.0.0')
+    try:
+        major_version = int(version.split('.')[0])
+        # websockets 10.x+ 使用 additional_headers，之前版本使用 extra_headers
+        if major_version >= 10:
+            return 'additional_headers'
+        else:
+            return 'extra_headers'
+    except (ValueError, IndexError):
+        # 默认使用新版参数名
+        return 'additional_headers'
 
 def convert_to_prometheus_text():
     """从缓存中生成 Prometheus 指标，自动过滤过期的服务器数据"""
@@ -101,10 +120,12 @@ latest_json_data = None
 
 async def fetch_groups(url):
     global group_map
+    # 创建 BasicAuth 对象（如果有认证信息）
+    auth = BasicAuth(auth_username, auth_password) if auth_username and auth_password else None
     while True:
         try:
             async with ClientSession() as session:
-                async with session.get(url) as resp:
+                async with session.get(url, auth=auth) as resp:
                     if resp.status == 200:
                         json_data = await resp.json()
                         if json_data.get("success"):
@@ -126,9 +147,21 @@ async def fetch_groups(url):
 
 async def listen(url):
     global latest_json_data, server_data_cache, server_last_update
+    # 为 WebSocket 创建认证 headers 的 kwargs（兼容不同版本的 websockets 库）
+    ws_kwargs = {}
+    if auth_username and auth_password:
+        credentials = base64.b64encode(f"{auth_username}:{auth_password}".encode()).decode()
+        headers = {"Authorization": f"Basic {credentials}"}
+        # 根据 websockets 版本选择正确的参数名
+        header_param = get_websocket_headers_param()
+        ws_kwargs[header_param] = headers
+        print(f"Using websockets parameter: {header_param}", flush=True)
+    
     while True:
         try:
-            async with websockets.connect(url) as websocket:
+            # ping_interval=None 禁用自动 ping，避免 keepalive ping timeout 错误
+            # 某些服务器可能不支持或响应较慢
+            async with websockets.connect(url, ping_interval=None, **ws_kwargs) as websocket:
                 print(f"Connected to {url}", flush=True)
                 while True:
                     try:
@@ -203,12 +236,18 @@ async def main(url, group_url):
     )
 
 if __name__ == "__main__":
-    print("Version：0.0.2", flush=True)
+    print("Version：0.0.3", flush=True)
     print("Starting nezha-exporter...", flush=True)
     url = os.getenv("WS_URL")
     group_url = os.getenv("GROUP_URL")
+    auth_username = os.getenv("AUTH_USERNAME")
+    auth_password = os.getenv("AUTH_PASSWORD")
     print(f"WS_URL={url}", flush=True)
     print(f"GROUP_URL={group_url}", flush=True)
+    if auth_username and auth_password:
+        print("Basic Auth: enabled", flush=True)
+    else:
+        print("Basic Auth: disabled (no credentials provided)", flush=True)
     if not url:
         print("Error: WS_URL environment variable is not set.", flush=True)
         exit(1)

@@ -6,7 +6,7 @@ import os
 import time
 import base64
 
-group_map = {}  # 服务器ID到分组名映射
+group_map = {}  # 服务器ID到分组名列表映射
 server_last_update = {}  # 服务器ID到最后更新时间的映射
 server_data_cache = {}  # 服务器ID到服务器数据的缓存
 server_last_uptime = {}  # 服务器ID到上次uptime值的映射，用于检测数据是否真正更新
@@ -53,50 +53,50 @@ def convert_to_prometheus_text():
         name = server.get("name", "")
         host = server.get("host", {})
         state = server.get("state", {})
-        group_name = group_map.get(sid, "unknown")
-        # 在指标中添加name和group标签，方便Prometheus和Grafana识别
+        group_names = group_map.get(sid, ["unknown"])
+        # 在指标中添加name和group标签，支持多分组
+        for group_name in group_names:
+            if "boot_time" in host:
+                lines.append(f'nezha_boot_time{{id="{sid}",name="{name}",group="{group_name}"}} {host["boot_time"]}')
+            if "mem_total" in host:
+                lines.append(f'nezha_mem_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["mem_total"]}')
+            if "disk_total" in host:
+                lines.append(f'nezha_disk_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["disk_total"]}')
+            if "swap_total" in host:
+                lines.append(f'nezha_swap_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["swap_total"]}')
 
-        if "boot_time" in host:
-            lines.append(f'nezha_boot_time{{id="{sid}",name="{name}",group="{group_name}"}} {host["boot_time"]}')
-        if "mem_total" in host:
-            lines.append(f'nezha_mem_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["mem_total"]}')
-        if "disk_total" in host:
-            lines.append(f'nezha_disk_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["disk_total"]}')
-        if "swap_total" in host:
-            lines.append(f'nezha_swap_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["swap_total"]}')
+            if "cpu" in state:
+                lines.append(f'nezha_cpu{{id="{sid}",name="{name}",group="{group_name}"}} {state["cpu"]}')
+            if "mem_used" in state:
+                lines.append(f'nezha_mem_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["mem_used"]}')
+            if "swap_used" in state:
+                lines.append(f'nezha_swap_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["swap_used"]}')
+            if "disk_used" in state:
+                lines.append(f'nezha_disk_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["disk_used"]}')
+            if "net_in_speed" in state:
+                lines.append(f'nezha_net_in_speed{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_in_speed"]}')
+            if "net_out_speed" in state:
+                lines.append(f'nezha_net_out_speed{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_out_speed"]}')
+            if "net_in_transfer" in state:
+                lines.append(f'nezha_net_in_transfer{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_in_transfer"]}')
+            if "net_out_transfer" in state:
+                lines.append(f'nezha_net_out_transfer{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_out_transfer"]}')
+            if "tcp_conn_count" in state:
+                lines.append(f'nezha_tcp_conn_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["tcp_conn_count"]}')
+            if "udp_conn_count" in state:
+                lines.append(f'nezha_udp_conn_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["udp_conn_count"]}')
+            if "process_count" in state:
+                lines.append(f'nezha_process_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["process_count"]}')
+            if "uptime" in state:
+                lines.append(f'nezha_uptime{{id="{sid}",name="{name}",group="{group_name}"}} {state["uptime"]}')
 
-        if "cpu" in state:
-            lines.append(f'nezha_cpu{{id="{sid}",name="{name}",group="{group_name}"}} {state["cpu"]}')
-        if "mem_used" in state:
-            lines.append(f'nezha_mem_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["mem_used"]}')
-        if "swap_used" in state:
-            lines.append(f'nezha_swap_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["swap_used"]}')
-        if "disk_used" in state:
-            lines.append(f'nezha_disk_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["disk_used"]}')
-        if "net_in_speed" in state:
-            lines.append(f'nezha_net_in_speed{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_in_speed"]}')
-        if "net_out_speed" in state:
-            lines.append(f'nezha_net_out_speed{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_out_speed"]}')
-        if "net_in_transfer" in state:
-            lines.append(f'nezha_net_in_transfer{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_in_transfer"]}')
-        if "net_out_transfer" in state:
-            lines.append(f'nezha_net_out_transfer{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_out_transfer"]}')
-        if "tcp_conn_count" in state:
-            lines.append(f'nezha_tcp_conn_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["tcp_conn_count"]}')
-        if "udp_conn_count" in state:
-            lines.append(f'nezha_udp_conn_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["udp_conn_count"]}')
-        if "process_count" in state:
-            lines.append(f'nezha_process_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["process_count"]}')
-        if "uptime" in state:
-            lines.append(f'nezha_uptime{{id="{sid}",name="{name}",group="{group_name}"}} {state["uptime"]}')
-
-        # 处理温度信息
-        temperatures = state.get("temperatures", [])
-        if temperatures:
-            for temp in temperatures:
-                temp_name = temp.get("Name", "unknown")
-                temp_value = temp.get("Temperature", 0)
-                lines.append(f'nezha_temperature{{id="{sid}",name="{name}",group="{group_name}",temp_name="{temp_name}"}} {temp_value}')
+            # 处理温度信息
+            temperatures = state.get("temperatures", [])
+            if temperatures:
+                for temp in temperatures:
+                    temp_name = temp.get("Name", "unknown")
+                    temp_value = temp.get("Temperature", 0)
+                    lines.append(f'nezha_temperature{{id="{sid}",name="{name}",group="{group_name}",temp_name="{temp_name}"}} {temp_value}')
 
     return "\n".join(lines)
 
@@ -111,7 +111,7 @@ def get_filtered_json_data():
         if current_time - last_update <= DATA_EXPIRE_SECONDS:
             # 复制服务器数据并添加分组信息
             server_with_group = server.copy()
-            server_with_group["group"] = group_map.get(sid, "unknown")
+            server_with_group["group"] = group_map.get(sid, ["unknown"])
             active_servers.append(server_with_group)
     
     # 构建过滤后的数据结构
@@ -141,7 +141,9 @@ async def fetch_groups(url, username=None, password=None):
                                 group_name = group_entry.get("group", {}).get("name", "unknown")
                                 servers = group_entry.get("servers", [])
                                 for sid in servers:
-                                    new_map[sid] = group_name
+                                    if sid not in new_map:
+                                        new_map[sid] = []
+                                    new_map[sid].append(group_name)
                             group_map = new_map
                             print(f"Fetched and updated group map: {group_map}", flush=True)
                         else:

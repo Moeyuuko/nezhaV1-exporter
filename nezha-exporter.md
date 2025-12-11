@@ -16,7 +16,7 @@ flowchart TD
         API --> FETCH["fetch_groups() 分组获取<br/>每60秒刷新"]
         LISTEN --> PARSE["JSON 解析"]
         PARSE --> UPDATE["更新服务器缓存<br/>记录更新时间"]
-        FETCH --> GMAP["group_map 缓存<br/>服务器ID → 分组名"]
+        FETCH --> GMAP["group_map 缓存<br/>服务器ID → 分组名列表"]
     end
     
     subgraph 数据缓存 ["数据缓存"]
@@ -121,7 +121,7 @@ flowchart TD
     
     BASIC --> B1["id - 服务器ID"]
     BASIC --> B2["name - 服务器名称"]
-    BASIC --> B3["group - 分组名（来自 group_map）"]
+    BASIC --> B3["group - 分组名列表（来自 group_map）"]
     
     HOST --> H1["boot_time - 启动时间"]
     HOST --> H2["mem_total - 总内存"]
@@ -179,7 +179,7 @@ flowchart TD
     
     G --> H["提取 group.name"]
     H --> I["遍历 servers 数组"]
-    I --> J["建立 server_id → group_name 映射"]
+    I --> J["建立 server_id → group_name 列表映射<br/>（支持一个服务器多个分组）"]
     J --> K["更新 group_map"]
     
     K --> L["等待 60 秒"]
@@ -191,7 +191,7 @@ flowchart TD
 
 | 变量名 | 类型 | 说明 |
 |-------|------|------|
-| `group_map` | Dict[int, str] | 服务器ID → 分组名映射 |
+| `group_map` | Dict[int, List[str]] | 服务器ID → 分组名列表映射（支持一个服务器属于多个分组） |
 | `server_data_cache` | Dict[int, dict] | 服务器ID → 服务器完整数据 |
 | `server_last_update` | Dict[int, float] | 服务器ID → 最后更新时间戳（Unix时间） |
 | `server_last_uptime` | Dict[int, int] | 服务器ID → 上次 uptime 值（用于检测数据是否真正更新） |
@@ -260,6 +260,7 @@ flowchart TD
 | 0.0.4 | 将 `nezha_online` 改为 WebSocket 返回的原始在线人数，新增 `nezha_online_server` 表示活跃服务器数量 |
 | 0.0.5 | JSON 输出添加服务器分组信息（`group` 字段） |
 | 0.0.6 | 修复认证参数传递问题（从全局变量改为函数参数传递），添加更详细的调试日志 |
+| 0.0.7 | 支持主机属于多个分组，group_map 改为服务器ID到分组名列表映射，Prometheus 指标为每个分组单独输出 |
 
 ## 文档流程图注意规格：
 > **⚠️ Mermaid 语法注意事项**

@@ -250,7 +250,7 @@ async def main(url, group_url, username=None, password=None):
     )
 
 if __name__ == "__main__":
-    print("Version：0.0.6", flush=True)
+    print("Version：0.0.7", flush=True)
     print("Starting nezha-exporter...", flush=True)
     url = os.getenv("WS_URL")
     group_url = os.getenv("GROUP_URL")

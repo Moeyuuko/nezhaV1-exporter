@@ -47,6 +47,12 @@ flowchart TD
 - 服务器离线后，`uptime` 停止变化，超过 60 秒后该服务器的指标自动从输出中移除
 - 服务器重新上线后，指标自动恢复
 
+### 多分组支持
+
+- 支持主机同时属于多个分组
+- Prometheus 指标会为每个分组单独输出一条记录
+- JSON 输出中 `group` 字段为分组名列表
+
 > 详细的数据处理流程请参阅 [nezha-exporter.md](nezha-exporter.md)
 
 ## 依赖要求

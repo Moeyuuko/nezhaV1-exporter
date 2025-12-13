@@ -291,7 +291,7 @@
             "properties": [
               {
                 "id": "displayName",
-                "value": "UCP连接数"
+                "value": "UDP连接数"
               },
               {
                 "id": "custom.minWidth",
@@ -577,7 +577,7 @@
           },
           "editorMode": "code",
           "exemplar": false,
-          "expr": "max by(name) (nezha_status_Temperatures_coretemp_core_0{job=\"$job\", tag=~\"$tag\", name=~\"$name\"})",
+          "expr": "max by(name) (nezha_status_Temperatures_coretemp_core_0{job=\"$job\", group=~\"$group\", name=~\"$name\"})",
           "format": "table",
           "hide": true,
           "instant": true,
@@ -1141,7 +1141,7 @@
           "disableTextWrap": false,
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum (avg_over_time(nezha_net_in_speed{job=\"$job\", group=~\"$group\", name=~\"$name\"}[$avg_over_time]))",
+          "expr": "sum (max by(name)(avg_over_time(nezha_net_in_speed{job=\"$job\", group=~\"$group\", name=~\"$name\"}[$avg_over_time])))",
           "format": "time_series",
           "fullMetaSearch": false,
           "hide": false,
@@ -1161,7 +1161,7 @@
           "disableTextWrap": false,
           "editorMode": "code",
           "exemplar": false,
-          "expr": "sum (avg_over_time(nezha_net_out_speed{job=\"$job\", group=~\"$group\", name=~\"$name\"}[$avg_over_time]))\r\n",
+          "expr": "sum (max by(name)(avg_over_time(nezha_net_out_speed{job=\"$job\", group=~\"$group\", name=~\"$name\"}[$avg_over_time])))\r\n",
           "format": "time_series",
           "fullMetaSearch": false,
           "hide": false,

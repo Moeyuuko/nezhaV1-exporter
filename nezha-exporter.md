@@ -9,14 +9,22 @@ flowchart TD
     subgraph 数据源
         WS["WebSocket 连接<br/>WS_URL"]
         API["HTTP API<br/>GROUP_URL"]
+        SVC["Service API<br/>SERVICE_URL"]
     end
     
     subgraph 核心处理
         WS --> LISTEN["listen() 监听循环"]
         API --> FETCH["fetch_groups() 分组获取<br/>每60秒刷新"]
-        LISTEN --> PARSE["JSON 解析"]
+        LISTEN --> PARSE["数据解析"]
         PARSE --> UPDATE["更新服务器缓存<br/>记录更新时间"]
         FETCH --> GMAP["group_map 缓存<br/>服务器ID → 分组名列表"]
+    end
+    
+    subgraph 服务监控模块 ["服务监控模块 (可选)"]
+        SVC --> SVC_LOOP["service_monitor_loop()<br/>每60秒刷新"]
+        SVC_LOOP --> SVC_FETCH["并发请求在线服务器"]
+        SVC_FETCH --> SVC_PARSE["解析延迟数据"]
+        SVC_PARSE --> SVC_CACHE["service_data_cache<br/>服务器ID → 监控数据"]
     end
     
     subgraph 数据缓存 ["数据缓存"]
@@ -26,14 +34,16 @@ flowchart TD
     
     SERVER_CACHE --> FILTER["过滤过期数据<br/>超过60秒未更新的服务器"]
     TIME_CACHE --> FILTER
+    SERVER_CACHE -.-> SVC_LOOP
     FILTER --> ADD_GROUP["添加分组信息<br/>从 group_map 获取"]
     GMAP -.-> ADD_GROUP
-    ADD_GROUP --> OUTPUT["格式化输出"]
+    ADD_GROUP --> MERGE["合并服务监控数据<br/>(如已启用)"]
+    SVC_CACHE -.-> MERGE
+    MERGE --> OUTPUT["格式化输出"]
     
     subgraph HTTP服务 ["HTTP 服务 (端口 8080)"]
-        OUTPUT --> EP1["/latest_message.json<br/>JSON 格式"]
-        OUTPUT --> EP2["/latest_message.prom<br/>Prometheus 格式"]
-        OUTPUT --> EP3["/metrics<br/>Prometheus 格式"]
+        OUTPUT --> EP1["/metrics<br/>Prometheus 格式"]
+        OUTPUT --> EP2["/latest_message.prom<br/>Prometheus 格式（兼容）"]
     end
 ```
 
@@ -92,8 +102,8 @@ flowchart TD
 ```mermaid
 flowchart TD
     A["WS 连接建立"] --> B["接收 WebSocket 消息"]
-    B --> C{"JSON 解析"}
-    C -- "解析失败" --> E["记录非JSON消息"]
+    B --> C{"数据解析"}
+    C -- "解析失败" --> E["记录错误消息"]
     E --> B
     C -- "解析成功" --> D["记录当前时间戳"]
     D --> F["遍历 servers 数组"]
@@ -144,11 +154,9 @@ flowchart TD
 
 ### 数据生成流程（每次请求时执行）
 
-JSON 端点和 Prometheus 端点共享相同的数据处理逻辑，仅输出格式不同：
-
 ```mermaid
 flowchart TD
-    A["收到 HTTP 请求<br/>/latest_message.json 或 /metrics"] --> B["获取当前时间"]
+    A["收到 HTTP 请求<br/>/metrics"] --> B["获取当前时间"]
     B --> C["遍历 server_data_cache"]
     C --> D{"检查服务器过期状态<br/>当前时间 - 最后更新时间"}
     D -- "<= 60秒（活跃）" --> E["从 group_map 获取分组名"]
@@ -159,9 +167,7 @@ flowchart TD
     H --> I
     I --> J{"还有更多服务器?"}
     J -- "是" --> C
-    J -- "否" --> K{"请求端点类型"}
-    K -- "/latest_message.json" --> L["输出 JSON 格式<br/>包含 group 字段"]
-    K -- "/metrics 或 /latest_message.prom" --> M["输出 Prometheus 格式<br/>包含 group 标签"]
+    J -- "否" --> K["输出 Prometheus 格式<br/>包含 group 标签"]
 ```
 
 ## 分组信息获取流程
@@ -170,7 +176,7 @@ flowchart TD
 flowchart TD
     A["启动 fetch_groups 协程"] --> B["HTTP GET 请求 GROUP_URL"]
     B --> C{"响应状态"}
-    C -- "200 OK" --> D["解析 JSON 响应"]
+    C -- "200 OK" --> D["解析响应数据"]
     C -- "其它状态" --> E["记录错误日志"]
     
     D --> F{"success 字段"}
@@ -187,6 +193,75 @@ flowchart TD
     L --> B
 ```
 
+## 服务监控模块流程
+
+服务监控模块（Service Monitor）用于采集各服务器到监控节点的网络延迟数据。
+
+### 服务监控数据获取流程
+
+```mermaid
+flowchart TD
+    A["service_monitor_loop 启动"] --> B["获取在线服务器列表<br/>get_online_servers()"]
+    B --> C{"有在线服务器?"}
+    C -- "否" --> D["跳过本次采集"]
+    C -- "是" --> E["并发请求 Service API<br/>GET /api/v1/service/{server_id}"]
+    E --> F["解析响应数据"]
+    F --> G{"success == true?"}
+    G -- "否" --> H["记录错误日志"]
+    G -- "是" --> I["遍历 data 数组<br/>每个监控节点"]
+    I --> J["提取 monitor_id, monitor_name"]
+    J --> J1["附加 server_name 和 server_groups<br/>从 group_map 获取分组信息"]
+    J1 --> K["提取 created_at, avg_delay 数组"]
+    K --> L["取最新 3 个数据点"]
+    L --> M["存入 service_data_cache"]
+    M --> N["更新 service_last_update"]
+    H --> O["等待 60 秒"]
+    D --> O
+    N --> O
+    O --> B
+```
+
+### 服务监控数据结构
+
+```mermaid
+flowchart TD
+    API["Service API 响应"] --> DATA["data 数组"]
+    DATA --> MONITOR["监控数据项"]
+    
+    MONITOR --> M1["monitor_id - 监控节点 ID"]
+    MONITOR --> M2["server_id - 服务器 ID"]
+    MONITOR --> M3["monitor_name - 监控节点名称"]
+    MONITOR --> M4["server_name - 服务器名称（从缓存获取）"]
+    MONITOR --> M4G["server_groups - 分组列表（从 group_map 获取）"]
+    MONITOR --> M5["created_at - 时间戳数组（毫秒）"]
+    MONITOR --> M6["avg_delay - 延迟数组（毫秒）"]
+    
+    M5 --> NOTE1["平行数组：created_at[i] 对应 avg_delay[i]"]
+    M6 --> NOTE1
+```
+
+### Prometheus 指标生成流程
+
+```mermaid
+flowchart TD
+    A["收到 /metrics 请求"] --> B["生成基础服务器指标"]
+    B --> C{"服务监控已启用?"}
+    C -- "否" --> D["返回基础指标"]
+    C -- "是" --> E["遍历 service_data_cache"]
+    E --> F{"服务器数据过期?<br/>> 120秒"}
+    F -- "是" --> G["跳过该服务器"]
+    F -- "否" --> H["遍历该服务器的监控数据"]
+    H --> I["取最新 3 个数据点"]
+    I --> J["为每个分组生成指标<br/>nezha_service_avg_delay_ms<br/>带 id, name, group,<br/>monitor_id, monitor_name 标签"]
+    J --> K{"还有更多监控节点?"}
+    K -- "是" --> H
+    K -- "否" --> L{"还有更多服务器?"}
+    G --> L
+    L -- "是" --> E
+    L -- "否" --> M["追加服务监控指标"]
+    M --> D
+```
+
 ## 核心数据结构
 
 | 变量名 | 类型 | 说明 |
@@ -196,8 +271,17 @@ flowchart TD
 | `server_last_update` | Dict[int, float] | 服务器ID → 最后更新时间戳（Unix时间） |
 | `server_last_uptime` | Dict[int, int] | 服务器ID → 上次 uptime 值（用于检测数据是否真正更新） |
 | `ws_online_count` | int | WebSocket 返回的在线人数（原始值，不与服务器关联） |
-| `latest_json_data` | str | 最新的原始 JSON 数据字符串 |
 | `DATA_EXPIRE_SECONDS` | int | 数据过期时间，默认 60 秒 |
+| `service_monitor_enabled` | bool | 服务监控功能开关 |
+
+### 服务监控模块数据结构
+
+| 变量名 | 类型 | 说明 |
+|-------|------|------|
+| `service_data_cache` | Dict[int, List[dict]] | 服务器ID → 监控数据列表 |
+| `service_last_update` | Dict[int, float] | 服务器ID → 最后更新时间戳 |
+| `SERVICE_DATA_EXPIRE_SECONDS` | int | 服务数据过期时间，默认 120 秒 |
+| `SERVICE_DATA_POINTS_COUNT` | int | 每次输出的数据点数量，默认 3 |
 
 ## Prometheus 指标说明
 
@@ -223,7 +307,34 @@ flowchart TD
 | `nezha_uptime` | Gauge | id, name, group | 运行时间（秒） |
 | `nezha_temperature` | Gauge | id, name, group, temp_name | 温度传感器读数（摄氏度） |
 
-> **注意**：当服务器离线超过 60 秒后，该服务器的所有指标将自动从 `/metrics` 端点的输出中移除，Prometheus 不会再拉取到该服务器的过期数据。
+### 服务监控指标（需启用 SERVICE_MONITOR_ENABLED）
+
+| 指标名称 | 类型 | 标签 | 说明 |
+|---------|------|------|------|
+| `nezha_service_avg_delay_ms` | Gauge | id, name, group, monitor_id, monitor_name | 平均网络延迟（毫秒） |
+
+**指标格式：**
+
+```prometheus
+nezha_service_avg_delay_ms{id="12",name="MoeGZ",group="默认",monitor_id="2",monitor_name="AWS_SG_ipv6"} 97.018 1765626600000
+```
+
+> 时间戳（毫秒级整数）放在数值后面。标签名与基础服务器指标保持一致（id, name, group）。
+
+**服务监控指标标签说明：**
+
+| 标签 | 说明 |
+|------|------|
+| `id` | 被监控的服务器 ID |
+| `name` | 被监控的服务器名称 |
+| `group` | 服务器分组（支持多分组，每个分组输出一条指标） |
+| `monitor_id` | 监控节点 ID |
+| `monitor_name` | 监控节点名称（如 AWS_SG_ipv6、广州移动 等） |
+
+> **注意**：
+> - 当服务器离线超过 60 秒后，该服务器的所有指标将自动从 `/metrics` 端点的输出中移除
+> - 服务监控数据过期时间为 120 秒
+> - 每个监控节点输出最新 3 个数据点，避免数据遗漏和重复
 
 ## 环境变量配置
 
@@ -231,6 +342,8 @@ flowchart TD
 |-------|------|------|
 | `WS_URL` | 是 | 哪吒监控 WebSocket 地址 |
 | `GROUP_URL` | 是 | 分组信息 API 地址 |
+| `SERVICE_MONITOR_ENABLED` | 否 | 服务监控功能开关（`true`/`false`，默认 `false`） |
+| `SERVICE_URL` | 否* | 服务监控 API 地址（*当 `SERVICE_MONITOR_ENABLED=true` 时必填） |
 | `AUTH_USERNAME` | 否 | Basic Auth 用户名（与 `AUTH_PASSWORD` 同时设置时生效） |
 | `AUTH_PASSWORD` | 否 | Basic Auth 密码（与 `AUTH_USERNAME` 同时设置时生效） |
 
@@ -238,16 +351,15 @@ flowchart TD
 
 | 端点路径 | 响应类型 | 说明 |
 |---------|---------|------|
-| `/latest_message.json` | application/json | 返回 JSON 格式数据（已过滤过期服务器，包含分组信息） |
-| `/latest_message.prom` | text/plain | 返回 Prometheus 格式的指标数据（已过滤过期服务器，包含分组标签） |
-| `/metrics` | text/plain | 同 `/latest_message.prom`，用于 Prometheus 抓取 |
+| `/metrics` | text/plain | 返回 Prometheus 格式的指标数据（已过滤过期服务器，包含分组标签） |
+| `/latest_message.prom` | text/plain | 同 `/metrics`，兼容旧版 |
 
 ## 错误处理
 
 - WebSocket 连接断开或失败时，自动每 5 秒重连
 - 分组信息获取失败时，记录日志并在下一个周期重试
 - 数据未就绪时，HTTP 端点返回 503 状态码和 "No data yet" 消息
-- **服务器离线超过 60 秒后，其数据自动从所有端点（JSON 和 Prometheus）的输出中移除**
+- **服务器离线超过 60 秒后，其数据自动从 Prometheus 输出中移除**
 
 ## 版本历史
 
@@ -258,9 +370,10 @@ flowchart TD
 | 0.0.2 | 优化离线检测：使用 `uptime` 变化判断服务器是否真正在线 |
 | 0.0.3 | 添加 HTTP Basic Auth 认证支持（可选），兼容不同版本 websockets 库 |
 | 0.0.4 | 将 `nezha_online` 改为 WebSocket 返回的原始在线人数，新增 `nezha_online_server` 表示活跃服务器数量 |
-| 0.0.5 | JSON 输出添加服务器分组信息（`group` 字段） |
+| 0.0.5 | 添加服务器分组信息支持 |
 | 0.0.6 | 修复认证参数传递问题（从全局变量改为函数参数传递），添加更详细的调试日志 |
 | 0.0.7 | 支持主机属于多个分组，group_map 改为服务器ID到分组名列表映射，Prometheus 指标为每个分组单独输出 |
+| 0.1.1 | 新增服务监控功能（Service Monitor），采集服务器到监控节点的网络延迟数据，支持通过环境变量开关；服务监控指标标签与基础指标统一（id, name, group）；移除 JSON 输出端点，仅保留 Prometheus 格式输出 |
 
 ## 文档流程图注意规格：
 > **⚠️ Mermaid 语法注意事项**

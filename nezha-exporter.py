@@ -6,6 +6,11 @@ import os
 import time
 import base64
 
+# ============================================================================
+# 全局变量和配置
+# ============================================================================
+
+# 服务器数据缓存
 group_map = {}  # 服务器ID到分组名列表映射
 server_last_update = {}  # 服务器ID到最后更新时间的映射
 server_data_cache = {}  # 服务器ID到服务器数据的缓存
@@ -13,9 +18,40 @@ server_last_uptime = {}  # 服务器ID到上次uptime值的映射，用于检测
 DATA_EXPIRE_SECONDS = 60  # 数据过期时间（秒）
 ws_online_count = 0  # WebSocket 返回的在线人数（原始值，不与服务器关联）
 
+# 服务监控数据缓存
+service_data_cache = {}  # {server_id: [monitor_data_list]}
+service_last_update = {}  # {server_id: timestamp}
+SERVICE_DATA_EXPIRE_SECONDS = 120  # 服务数据过期时间（秒），比主数据长一些
+SERVICE_DATA_POINTS_COUNT = 3  # 每个监控节点输出的数据点数量
+
 # Basic Auth 认证信息（可选）
 auth_username = None
 auth_password = None
+
+# 服务监控开关
+service_monitor_enabled = False
+
+
+# ============================================================================
+# 工具函数
+# ============================================================================
+
+def get_online_servers():
+    """
+    获取在线服务器列表
+    
+    Returns:
+        list: [(server_id, server_name), ...]
+    """
+    current_time = time.time()
+    online_servers = []
+    for sid, server in server_data_cache.items():
+        last_update = server_last_update.get(sid, 0)
+        if current_time - last_update <= DATA_EXPIRE_SECONDS:
+            server_name = server.get("name", "unknown")
+            online_servers.append((sid, server_name))
+    return online_servers
+
 
 def get_websocket_headers_param():
     """返回 websockets.connect() 用于传递 headers 的参数名（兼容不同版本）"""
@@ -30,6 +66,11 @@ def get_websocket_headers_param():
     except (ValueError, IndexError):
         # 默认使用新版参数名
         return 'additional_headers'
+
+
+# ============================================================================
+# Prometheus 指标生成 - 服务器基础指标
+# ============================================================================
 
 def convert_to_prometheus_text():
     """从缓存中生成 Prometheus 指标，自动过滤过期的服务器数据"""
@@ -100,31 +141,73 @@ def convert_to_prometheus_text():
 
     return "\n".join(lines)
 
-def get_filtered_json_data():
-    """生成过滤过期服务器后的 JSON 数据"""
-    current_time = time.time()
-    
-    # 过滤出未过期的服务器，并添加分组信息
-    active_servers = []
-    for sid, server in server_data_cache.items():
-        last_update = server_last_update.get(sid, 0)
-        if current_time - last_update <= DATA_EXPIRE_SECONDS:
-            # 复制服务器数据并添加分组信息
-            server_with_group = server.copy()
-            server_with_group["group"] = group_map.get(sid, ["unknown"])
-            active_servers.append(server_with_group)
-    
-    # 构建过滤后的数据结构
-    filtered_data = {
-        "online": len(active_servers),
-        "servers": active_servers
-    }
-    
-    return json.dumps(filtered_data, indent=4, ensure_ascii=False)
 
-latest_json_data = None
+# ============================================================================
+# Prometheus 指标生成 - 服务监控指标（网络延迟）
+# ============================================================================
+
+def convert_service_to_prometheus():
+    """
+    将服务监控数据转换为 Prometheus 格式
+    
+    Returns:
+        str: Prometheus 格式的指标文本
+    """
+    current_time = time.time()
+    lines = []
+    
+    # 添加指标说明
+    lines.append("# HELP nezha_service_avg_delay_ms Average network delay in milliseconds")
+    lines.append("# TYPE nezha_service_avg_delay_ms gauge")
+    
+    for server_id, monitors in service_data_cache.items():
+        # 检查数据是否过期
+        last_update = service_last_update.get(server_id, 0)
+        if current_time - last_update > SERVICE_DATA_EXPIRE_SECONDS:
+            continue
+        
+        for monitor in monitors:
+            monitor_id = monitor.get("monitor_id", 0)
+            monitor_name = monitor.get("monitor_name", "unknown")
+            server_name = monitor.get("server_name", "unknown")
+            server_groups = monitor.get("server_groups", ["unknown"])
+            
+            created_at = monitor.get("created_at", [])
+            avg_delay = monitor.get("avg_delay", [])
+            
+            # 取最新的 SERVICE_DATA_POINTS_COUNT 个数据点
+            # created_at 和 avg_delay 是平行数组，最新的数据在末尾
+            if created_at and avg_delay:
+                # 取最后 SERVICE_DATA_POINTS_COUNT 个数据点
+                start_idx = max(0, len(created_at) - SERVICE_DATA_POINTS_COUNT)
+                
+                for i in range(start_idx, len(created_at)):
+                    if i < len(avg_delay):
+                        # 时间戳保持毫秒格式（Prometheus 需要毫秒级整数）
+                        timestamp = int(created_at[i])
+                        delay = avg_delay[i]
+                        
+                        # 转义标签值中的特殊字符
+                        safe_monitor_name = monitor_name.replace('"', '\\"')
+                        safe_server_name = server_name.replace('"', '\\"')
+                        
+                        # 为每个分组生成一条指标（与服务器基础指标保持一致）
+                        # 标签名使用 id, name, group 与基础指标统一
+                        for group_name in server_groups:
+                            safe_group_name = group_name.replace('"', '\\"')
+                            # Prometheus 格式：时间戳放在数值后面，使用毫秒级整数
+                            line = f'nezha_service_avg_delay_ms{{id="{server_id}",name="{safe_server_name}",group="{safe_group_name}",monitor_id="{monitor_id}",monitor_name="{safe_monitor_name}"}} {delay} {timestamp}'
+                            lines.append(line)
+    
+    return "\n".join(lines)
+
+
+# ============================================================================
+# 数据获取 - 分组信息
+# ============================================================================
 
 async def fetch_groups(url, username=None, password=None):
+    """定期获取服务器分组信息"""
     global group_map
     # 创建 BasicAuth 对象（如果有认证信息）
     auth = BasicAuth(username, password) if username and password else None
@@ -156,8 +239,14 @@ async def fetch_groups(url, username=None, password=None):
             print(f"Error fetching groups: {e}", flush=True)
         await asyncio.sleep(60)  # 每60秒刷新一次分组信息
 
+
+# ============================================================================
+# 数据获取 - WebSocket 服务器数据
+# ============================================================================
+
 async def listen(url, username=None, password=None):
-    global latest_json_data, server_data_cache, server_last_update, ws_online_count
+    """监听 WebSocket 推送的服务器数据"""
+    global server_data_cache, server_last_update, ws_online_count
     # 为 WebSocket 创建认证 headers 的 kwargs（兼容不同版本的 websockets 库）
     ws_kwargs = {}
     if username and password:
@@ -179,8 +268,6 @@ async def listen(url, username=None, password=None):
                         message = await websocket.recv()
                         try:
                             data = json.loads(message)
-                            formatted = json.dumps(data, indent=4, ensure_ascii=False)
-                            latest_json_data = formatted
                             
                             # 更新 WebSocket 返回的在线人数
                             ws_online_count = data.get("online", 0)
@@ -217,23 +304,133 @@ async def listen(url, username=None, password=None):
             print(f"Unexpected error: {e}. Reconnecting in 5 seconds...", flush=True)
             await asyncio.sleep(5)
 
-async def handle_latest_json(request):
-    if not server_data_cache:
-        return web.Response(text="No data yet", status=503)
-    # 每次请求时动态生成 JSON，自动过滤过期数据
-    json_data = get_filtered_json_data()
-    return web.Response(text=json_data, content_type='application/json')
+
+# ============================================================================
+# 数据获取 - 服务监控数据（网络延迟）
+# ============================================================================
+
+async def fetch_service_data(session, base_url, server_id, auth=None):
+    """
+    获取单个服务器的服务监控数据
+    
+    Args:
+        session: aiohttp ClientSession
+        base_url: 服务监控 API 基础 URL (如 https://nezha.example.com/api/v1/service)
+        server_id: 服务器 ID
+        auth: BasicAuth 对象（可选）
+    
+    Returns:
+        list: 监控数据列表，失败返回空列表
+    """
+    url = f"{base_url}/{server_id}"
+    try:
+        async with session.get(url, auth=auth) as resp:
+            if resp.status == 200:
+                json_data = await resp.json()
+                if json_data.get("success"):
+                    return json_data.get("data", [])
+                else:
+                    print(f"Service API failed for server {server_id}: success=false", flush=True)
+            else:
+                print(f"Service API HTTP error for server {server_id}: {resp.status}", flush=True)
+    except Exception as e:
+        print(f"Error fetching service data for server {server_id}: {e}", flush=True)
+    return []
+
+
+async def fetch_all_service_data(base_url, online_servers, username=None, password=None):
+    """
+    并发获取所有在线服务器的服务监控数据
+    
+    Args:
+        base_url: 服务监控 API 基础 URL
+        online_servers: 在线服务器列表 [(server_id, server_name), ...]
+        username: 认证用户名（可选）
+        password: 认证密码（可选）
+    """
+    global service_data_cache, service_last_update
+    
+    if not online_servers:
+        return
+    
+    auth = BasicAuth(username, password) if username and password else None
+    
+    async with ClientSession() as session:
+        tasks = []
+        for server_id, server_name in online_servers:
+            task = fetch_service_data(session, base_url, server_id, auth)
+            tasks.append((server_id, server_name, task))
+        
+        # 并发执行所有请求
+        current_time = time.time()
+        for server_id, server_name, task in tasks:
+            try:
+                data = await task
+                if data:
+                    # 为每个监控数据添加 server_name 和 server_groups
+                    server_groups = group_map.get(server_id, ["unknown"])
+                    for item in data:
+                        item['server_name'] = server_name
+                        item['server_groups'] = server_groups
+                    service_data_cache[server_id] = data
+                    service_last_update[server_id] = current_time
+            except Exception as e:
+                print(f"Error processing service data for server {server_id}: {e}", flush=True)
+
+
+async def service_monitor_loop(base_url, username=None, password=None, interval=60):
+    """
+    服务监控主循环
+    
+    Args:
+        base_url: 服务监控 API 基础 URL
+        username: 认证用户名（可选）
+        password: 认证密码（可选）
+        interval: 刷新间隔（秒）
+    """
+    print(f"Service monitor started, base_url={base_url}, interval={interval}s", flush=True)
+    
+    while True:
+        try:
+            # 获取在线服务器列表
+            online_servers = get_online_servers()
+            
+            if online_servers:
+                print(f"Fetching service data for {len(online_servers)} online servers...", flush=True)
+                await fetch_all_service_data(base_url, online_servers, username, password)
+                print(f"Service data cache updated, {len(service_data_cache)} servers cached", flush=True)
+            else:
+                print("No online servers found, skipping service data fetch", flush=True)
+                
+        except Exception as e:
+            print(f"Error in service monitor loop: {e}", flush=True)
+        
+        await asyncio.sleep(interval)
+
+
+# ============================================================================
+# HTTP 服务器
+# ============================================================================
 
 async def handle_latest_prom(request):
+    """处理 Prometheus 格式数据请求"""
     if not server_data_cache:
         return web.Response(text="No data yet", status=503)
     # 每次请求时动态生成指标，自动过滤过期数据
     prom_data = convert_to_prometheus_text()
+    
+    # 如果启用了服务监控，追加服务监控指标
+    if service_monitor_enabled:
+        service_prom_data = convert_service_to_prometheus()
+        if service_prom_data:
+            prom_data = prom_data + "\n" + service_prom_data
+    
     return web.Response(text=prom_data, content_type='text/plain')
 
+
 async def start_web_server():
+    """启动 HTTP 服务器"""
     app = web.Application()
-    app.router.add_get('/latest_message.json', handle_latest_json)
     app.router.add_get('/latest_message.prom', handle_latest_prom)
     app.router.add_get('/metrics', handle_latest_prom)
     runner = web.AppRunner(app)
@@ -242,22 +439,44 @@ async def start_web_server():
     await site.start()
     print("HTTP server started on port 8080", flush=True)
 
-async def main(url, group_url, username=None, password=None):
-    await asyncio.gather(
+
+# ============================================================================
+# 主程序入口
+# ============================================================================
+
+async def main(url, group_url, service_url=None, username=None, password=None):
+    """主程序入口，启动所有异步任务"""
+    tasks = [
         listen(url, username, password),
         fetch_groups(group_url, username, password),
         start_web_server()
-    )
+    ]
+    
+    # 如果启用了服务监控，添加服务监控任务
+    if service_monitor_enabled and service_url:
+        tasks.append(service_monitor_loop(service_url, username, password))
+    
+    await asyncio.gather(*tasks)
+
 
 if __name__ == "__main__":
-    print("Version：0.0.7", flush=True)
+    print("Version：0.1.1", flush=True)
     print("Starting nezha-exporter...", flush=True)
     url = os.getenv("WS_URL")
     group_url = os.getenv("GROUP_URL")
+    service_url = os.getenv("SERVICE_URL")
     username = os.getenv("AUTH_USERNAME")
     password = os.getenv("AUTH_PASSWORD")
+    
+    # 服务监控开关
+    service_monitor_env = os.getenv("SERVICE_MONITOR_ENABLED", "false").lower()
+    service_monitor_enabled = service_monitor_env in ("true", "1", "yes")
+    
     print(f"WS_URL={url}", flush=True)
     print(f"GROUP_URL={group_url}", flush=True)
+    print(f"SERVICE_URL={service_url}", flush=True)
+    print(f"SERVICE_MONITOR_ENABLED={service_monitor_enabled}", flush=True)
+    
     if username and password:
         print("Basic Auth: enabled", flush=True)
     else:
@@ -268,4 +487,7 @@ if __name__ == "__main__":
     if not group_url:
         print("Error: GROUP_URL environment variable is not set.", flush=True)
         exit(1)
-    asyncio.run(main(url, group_url, username, password))
+    if service_monitor_enabled and not service_url:
+        print("Error: SERVICE_URL environment variable is not set but SERVICE_MONITOR_ENABLED is true.", flush=True)
+        exit(1)
+    asyncio.run(main(url, group_url, service_url, username, password))

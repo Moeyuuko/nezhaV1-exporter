@@ -7,6 +7,9 @@ services:
     environment:
       WS_URL: wss://nezha.example.com/api/v1/ws/server #设置ws地址
       GROUP_URL: https://nezha.example.com/api/v1/server-group #设置分组API地址
+      # 可选：服务监控功能（网络延迟监控）
+      # SERVICE_MONITOR_ENABLED: "true"  # 启用服务监控 (true/false)
+      # SERVICE_URL: https://nezha.example.com/api/v1/service  # 服务监控API地址
       # 可选：如果需要 Basic Auth 认证，取消下面两行注释并填写用户名密码
       # AUTH_USERNAME: your_username
       # AUTH_PASSWORD: your_password

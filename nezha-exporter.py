@@ -17,6 +17,7 @@ server_data_cache = {}  # 服务器ID到服务器数据的缓存
 server_last_uptime = {}  # 服务器ID到上次uptime值的映射，用于检测数据是否真正更新
 DATA_EXPIRE_SECONDS = 60  # 数据过期时间（秒）
 ws_online_count = 0  # WebSocket 返回的在线人数（原始值，不与服务器关联）
+ws_timestamp = 0  # WebSocket 返回的时间戳（毫秒级）
 
 # 服务监控数据缓存
 service_data_cache = {}  # {server_id: [monitor_data_list]}
@@ -84,10 +85,13 @@ def convert_to_prometheus_text():
         if current_time - last_update <= DATA_EXPIRE_SECONDS:
             active_servers.append(server)
     
+    # 获取时间戳（毫秒级），用于 Prometheus 指标
+    timestamp = ws_timestamp if ws_timestamp > 0 else int(time.time() * 1000)
+    
     # WebSocket 返回的在线人数（原始值，不与服务器关联）
-    lines.append(f'nezha_online {ws_online_count}')
+    lines.append(f'nezha_online {ws_online_count} {timestamp}')
     # 在线服务器数量（只统计未过期的）
-    lines.append(f'nezha_online_server {len(active_servers)}')
+    lines.append(f'nezha_online_server {len(active_servers)} {timestamp}')
     
     for server in active_servers:
         sid = server.get("id", 0)
@@ -98,38 +102,38 @@ def convert_to_prometheus_text():
         # 在指标中添加name和group标签，支持多分组
         for group_name in group_names:
             if "boot_time" in host:
-                lines.append(f'nezha_boot_time{{id="{sid}",name="{name}",group="{group_name}"}} {host["boot_time"]}')
+                lines.append(f'nezha_boot_time{{id="{sid}",name="{name}",group="{group_name}"}} {host["boot_time"]} {timestamp}')
             if "mem_total" in host:
-                lines.append(f'nezha_mem_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["mem_total"]}')
+                lines.append(f'nezha_mem_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["mem_total"]} {timestamp}')
             if "disk_total" in host:
-                lines.append(f'nezha_disk_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["disk_total"]}')
+                lines.append(f'nezha_disk_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["disk_total"]} {timestamp}')
             if "swap_total" in host:
-                lines.append(f'nezha_swap_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["swap_total"]}')
+                lines.append(f'nezha_swap_total{{id="{sid}",name="{name}",group="{group_name}"}} {host["swap_total"]} {timestamp}')
 
             if "cpu" in state:
-                lines.append(f'nezha_cpu{{id="{sid}",name="{name}",group="{group_name}"}} {state["cpu"]}')
+                lines.append(f'nezha_cpu{{id="{sid}",name="{name}",group="{group_name}"}} {state["cpu"]} {timestamp}')
             if "mem_used" in state:
-                lines.append(f'nezha_mem_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["mem_used"]}')
+                lines.append(f'nezha_mem_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["mem_used"]} {timestamp}')
             if "swap_used" in state:
-                lines.append(f'nezha_swap_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["swap_used"]}')
+                lines.append(f'nezha_swap_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["swap_used"]} {timestamp}')
             if "disk_used" in state:
-                lines.append(f'nezha_disk_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["disk_used"]}')
+                lines.append(f'nezha_disk_used{{id="{sid}",name="{name}",group="{group_name}"}} {state["disk_used"]} {timestamp}')
             if "net_in_speed" in state:
-                lines.append(f'nezha_net_in_speed{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_in_speed"]}')
+                lines.append(f'nezha_net_in_speed{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_in_speed"]} {timestamp}')
             if "net_out_speed" in state:
-                lines.append(f'nezha_net_out_speed{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_out_speed"]}')
+                lines.append(f'nezha_net_out_speed{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_out_speed"]} {timestamp}')
             if "net_in_transfer" in state:
-                lines.append(f'nezha_net_in_transfer{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_in_transfer"]}')
+                lines.append(f'nezha_net_in_transfer{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_in_transfer"]} {timestamp}')
             if "net_out_transfer" in state:
-                lines.append(f'nezha_net_out_transfer{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_out_transfer"]}')
+                lines.append(f'nezha_net_out_transfer{{id="{sid}",name="{name}",group="{group_name}"}} {state["net_out_transfer"]} {timestamp}')
             if "tcp_conn_count" in state:
-                lines.append(f'nezha_tcp_conn_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["tcp_conn_count"]}')
+                lines.append(f'nezha_tcp_conn_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["tcp_conn_count"]} {timestamp}')
             if "udp_conn_count" in state:
-                lines.append(f'nezha_udp_conn_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["udp_conn_count"]}')
+                lines.append(f'nezha_udp_conn_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["udp_conn_count"]} {timestamp}')
             if "process_count" in state:
-                lines.append(f'nezha_process_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["process_count"]}')
+                lines.append(f'nezha_process_count{{id="{sid}",name="{name}",group="{group_name}"}} {state["process_count"]} {timestamp}')
             if "uptime" in state:
-                lines.append(f'nezha_uptime{{id="{sid}",name="{name}",group="{group_name}"}} {state["uptime"]}')
+                lines.append(f'nezha_uptime{{id="{sid}",name="{name}",group="{group_name}"}} {state["uptime"]} {timestamp}')
 
             # 处理温度信息
             temperatures = state.get("temperatures", [])
@@ -137,7 +141,7 @@ def convert_to_prometheus_text():
                 for temp in temperatures:
                     temp_name = temp.get("Name", "unknown")
                     temp_value = temp.get("Temperature", 0)
-                    lines.append(f'nezha_temperature{{id="{sid}",name="{name}",group="{group_name}",temp_name="{temp_name}"}} {temp_value}')
+                    lines.append(f'nezha_temperature{{id="{sid}",name="{name}",group="{group_name}",temp_name="{temp_name}"}} {temp_value} {timestamp}')
 
     return "\n".join(lines)
 
@@ -246,7 +250,7 @@ async def fetch_groups(url, username=None, password=None):
 
 async def listen(url, username=None, password=None):
     """监听 WebSocket 推送的服务器数据"""
-    global server_data_cache, server_last_update, ws_online_count
+    global server_data_cache, server_last_update, ws_online_count, ws_timestamp
     # 为 WebSocket 创建认证 headers 的 kwargs（兼容不同版本的 websockets 库）
     ws_kwargs = {}
     if username and password:
@@ -269,8 +273,9 @@ async def listen(url, username=None, password=None):
                         try:
                             data = json.loads(message)
                             
-                            # 更新 WebSocket 返回的在线人数
+                            # 更新 WebSocket 返回的在线人数和时间戳
                             ws_online_count = data.get("online", 0)
+                            ws_timestamp = data.get("now", 0)
                             
                             # 更新服务器数据缓存和最后更新时间
                             current_time = time.time()
@@ -460,7 +465,7 @@ async def main(url, group_url, service_url=None, username=None, password=None):
 
 
 if __name__ == "__main__":
-    print("Version：0.1.1", flush=True)
+    print("Version：0.1.2", flush=True)
     print("Starting nezha-exporter...", flush=True)
     url = os.getenv("WS_URL")
     group_url = os.getenv("GROUP_URL")

@@ -15,8 +15,8 @@ flowchart TD
     subgraph 核心处理
         WS --> LISTEN["listen() 监听循环"]
         API --> FETCH["fetch_groups() 分组获取<br/>每60秒刷新"]
-        LISTEN --> PARSE["数据解析"]
-        PARSE --> UPDATE["更新服务器缓存<br/>记录更新时间"]
+        LISTEN --> PARSE["数据解析<br/>提取 now 时间戳"]
+        PARSE --> UPDATE["更新服务器缓存<br/>记录更新时间和时间戳"]
         FETCH --> GMAP["group_map 缓存<br/>服务器ID → 分组名列表"]
     end
     
@@ -54,7 +54,8 @@ flowchart TD
 ```mermaid
 flowchart TD
     subgraph 数据接收 ["WebSocket 数据接收"]
-        A["接收 WebSocket 消息"] --> B["解析服务器列表"]
+        A["接收 WebSocket 消息"] --> A1["提取 now 字段<br/>更新 ws_timestamp"]
+        A1 --> B["解析服务器列表"]
         B --> C["获取当前时间戳"]
         C --> D["遍历每个服务器"]
         D --> D1["获取当前 uptime 值"]
@@ -105,7 +106,8 @@ flowchart TD
     B --> C{"数据解析"}
     C -- "解析失败" --> E["记录错误消息"]
     E --> B
-    C -- "解析成功" --> D["记录当前时间戳"]
+    C -- "解析成功" --> C1["提取 now 字段<br/>更新 ws_timestamp"]
+    C1 --> D["记录当前时间戳"]
     D --> F["遍历 servers 数组"]
     F --> G["获取服务器 ID 和 uptime"]
     G --> G0{"uptime 是否变化?"}
@@ -271,6 +273,7 @@ flowchart TD
 | `server_last_update` | Dict[int, float] | 服务器ID → 最后更新时间戳（Unix时间） |
 | `server_last_uptime` | Dict[int, int] | 服务器ID → 上次 uptime 值（用于检测数据是否真正更新） |
 | `ws_online_count` | int | WebSocket 返回的在线人数（原始值，不与服务器关联） |
+| `ws_timestamp` | int | WebSocket 返回的时间戳（毫秒级，来自 `now` 字段） |
 | `DATA_EXPIRE_SECONDS` | int | 数据过期时间，默认 60 秒 |
 | `service_monitor_enabled` | bool | 服务监控功能开关 |
 
@@ -284,6 +287,8 @@ flowchart TD
 | `SERVICE_DATA_POINTS_COUNT` | int | 每次输出的数据点数量，默认 3 |
 
 ## Prometheus 指标说明
+
+所有服务器基础指标均带有毫秒级时间戳（来自 WebSocket 的 `now` 字段），格式为：`metric_name{labels} value timestamp`
 
 | 指标名称 | 类型 | 标签 | 说明 |
 |---------|------|------|------|
@@ -306,6 +311,14 @@ flowchart TD
 | `nezha_process_count` | Gauge | id, name, group | 进程数 |
 | `nezha_uptime` | Gauge | id, name, group | 运行时间（秒） |
 | `nezha_temperature` | Gauge | id, name, group, temp_name | 温度传感器读数（摄氏度） |
+
+**指标输出示例：**
+
+```prometheus
+nezha_online 2 1765719627000
+nezha_cpu{id="11",name="MoeSG",group="default"} 1.147 1765719627000
+nezha_mem_used{id="11",name="MoeSG",group="default"} 632926208 1765719627000
+```
 
 ### 服务监控指标（需启用 SERVICE_MONITOR_ENABLED）
 
@@ -332,6 +345,7 @@ nezha_service_avg_delay_ms{id="12",name="MoeGZ",group="默认",monitor_id="2",mo
 | `monitor_name` | 监控节点名称（如 AWS_SG_ipv6、广州移动 等） |
 
 > **注意**：
+> - 所有指标均带有毫秒级时间戳（来自 WebSocket 的 `now` 字段）
 > - 当服务器离线超过 60 秒后，该服务器的所有指标将自动从 `/metrics` 端点的输出中移除
 > - 服务监控数据过期时间为 120 秒
 > - 每个监控节点输出最新 3 个数据点，避免数据遗漏和重复
@@ -374,6 +388,7 @@ nezha_service_avg_delay_ms{id="12",name="MoeGZ",group="默认",monitor_id="2",mo
 | 0.0.6 | 修复认证参数传递问题（从全局变量改为函数参数传递），添加更详细的调试日志 |
 | 0.0.7 | 支持主机属于多个分组，group_map 改为服务器ID到分组名列表映射，Prometheus 指标为每个分组单独输出 |
 | 0.1.1 | 新增服务监控功能（Service Monitor），采集服务器到监控节点的网络延迟数据，支持通过环境变量开关；服务监控指标标签与基础指标统一（id, name, group）；移除 JSON 输出端点，仅保留 Prometheus 格式输出 |
+| 0.1.2 | 为所有服务器基础指标添加时间戳支持，时间戳来自 WebSocket 的 `now` 字段（毫秒级），与服务监控指标格式保持一致 |
 
 ## 文档流程图注意规格：
 > **⚠️ Mermaid 语法注意事项**

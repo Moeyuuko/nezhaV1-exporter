@@ -59,6 +59,12 @@ flowchart TD
 - 服务器离线后，`uptime` 停止变化，超过 60 秒后该服务器的指标自动从输出中移除
 - 服务器重新上线后，指标自动恢复
 
+### 时间戳支持
+
+- 所有服务器基础指标均带有毫秒级时间戳（来自 WebSocket 的 `now` 字段）
+- 指标格式：`metric_name{labels} value timestamp`
+- 示例：`nezha_cpu{id="11",name="MoeSG",group="default"} 1.147 1765719627000`
+
 ### 多分组支持
 
 - 支持主机同时属于多个分组
@@ -163,7 +169,15 @@ flowchart TD
 
 服务监控功能可以采集各服务器到监控节点的网络延迟数据。启用后，会定期从 Service API 获取所有在线服务器的延迟监控数据，并以 Prometheus 格式暴露。
 
-**Prometheus 指标格式：**
+**Prometheus 指标格式（基础指标带时间戳）：**
+
+```prometheus
+nezha_online 2 1765719627000
+nezha_cpu{id="11",name="MoeSG",group="default"} 1.147 1765719627000
+nezha_mem_used{id="11",name="MoeSG",group="default"} 632926208 1765719627000
+```
+
+**服务监控指标格式：**
 
 ```prometheus
 # HELP nezha_service_avg_delay_ms Average network delay in milliseconds
@@ -171,7 +185,7 @@ flowchart TD
 nezha_service_avg_delay_ms{id="12",name="MoeGZ",group="默认",monitor_id="2",monitor_name="AWS_SG_ipv6"} 97.018 1765626600000
 ```
 
-> 注：时间戳（毫秒级整数）放在数值后面。每个监控节点输出最新 3 个数据点。标签名与基础指标保持一致（id, name, group）。
+> 注：所有指标均带有毫秒级时间戳。基础指标时间戳来自 WebSocket 的 `now` 字段，服务监控指标时间戳来自 API 返回的 `created_at` 字段。每个监控节点输出最新 3 个数据点。标签名与基础指标保持一致（id, name, group）。
 
 **标签说明：**
 

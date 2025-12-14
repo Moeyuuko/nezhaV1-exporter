@@ -247,6 +247,12 @@ services:
 
 - 推荐将 `/metrics` 接口作为 Prometheus 的 scrape target，采集 Nezha 监控数据并在 Grafana 等平台展示。
 
+- **预配置仪表板**：[GrafanaPanel](GrafanaPanel/) 目录下提供了两个预配置的 Grafana 仪表板：
+  - `Nezha-grafana.json` - 主仪表板，综合监控服务器状态和服务延迟
+  - `Nezha_service.json` - 服务监控专用仪表板，专注于网络延迟监控
+
+  详细导入说明请参阅 [GrafanaPanel/README.md](GrafanaPanel/README.md)
+
 - Grafana 演示地址：[Nezha 监控数据 Dashboard 示例](https://grafana2.moeyuuko.com/d/edsum8gy9f08we/nezha)
 
 ## 贡献方式

@@ -214,7 +214,7 @@ flowchart TD
     I --> J["提取 monitor_id, monitor_name"]
     J --> J1["附加 server_name 和 server_groups<br/>从 group_map 获取分组信息"]
     J1 --> K["提取 created_at, avg_delay 数组"]
-    K --> L["取最新 3 个数据点"]
+    K --> L["取最新 1 个数据点"]
     L --> M["存入 service_data_cache"]
     M --> N["更新 service_last_update"]
     H --> O["等待 60 秒"]
@@ -253,7 +253,7 @@ flowchart TD
     E --> F{"服务器数据过期?<br/>> 120秒"}
     F -- "是" --> G["跳过该服务器"]
     F -- "否" --> H["遍历该服务器的监控数据"]
-    H --> I["取最新 3 个数据点"]
+    H --> I["取最新 1 个数据点"]
     I --> J["为每个分组生成指标<br/>nezha_service_avg_delay_ms<br/>带 id, name, group,<br/>monitor_id, monitor_name 标签"]
     J --> K{"还有更多监控节点?"}
     K -- "是" --> H
@@ -284,7 +284,7 @@ flowchart TD
 | `service_data_cache` | Dict[int, List[dict]] | 服务器ID → 监控数据列表 |
 | `service_last_update` | Dict[int, float] | 服务器ID → 最后更新时间戳 |
 | `SERVICE_DATA_EXPIRE_SECONDS` | int | 服务数据过期时间，默认 120 秒 |
-| `SERVICE_DATA_POINTS_COUNT` | int | 每次输出的数据点数量，默认 3 |
+| `SERVICE_DATA_POINTS_COUNT` | int | 每次输出的数据点数量，默认 1 |
 
 ## Prometheus 指标说明
 
@@ -348,7 +348,7 @@ nezha_service_avg_delay_ms{id="12",name="MoeGZ",group="默认",monitor_id="2",mo
 > - 所有指标均带有毫秒级时间戳（来自 WebSocket 的 `now` 字段）
 > - 当服务器离线超过 60 秒后，该服务器的所有指标将自动从 `/metrics` 端点的输出中移除
 > - 服务监控数据过期时间为 120 秒
-> - 每个监控节点输出最新 3 个数据点，避免数据遗漏和重复
+> - 每个监控节点输出最新 1 个数据点
 
 ## 环境变量配置
 
@@ -389,6 +389,7 @@ nezha_service_avg_delay_ms{id="12",name="MoeGZ",group="默认",monitor_id="2",mo
 | 0.0.7 | 支持主机属于多个分组，group_map 改为服务器ID到分组名列表映射，Prometheus 指标为每个分组单独输出 |
 | 0.1.1 | 新增服务监控功能（Service Monitor），采集服务器到监控节点的网络延迟数据，支持通过环境变量开关；服务监控指标标签与基础指标统一（id, name, group）；移除 JSON 输出端点，仅保留 Prometheus 格式输出 |
 | 0.1.2 | 为所有服务器基础指标添加时间戳支持，时间戳来自 WebSocket 的 `now` 字段（毫秒级），与服务监控指标格式保持一致 |
+| 0.1.3 | 服务监控数据点数量从 3 改为 1，只返回最新的一个数据点 |
 
 ## 文档流程图注意规格：
 > **⚠️ Mermaid 语法注意事项**

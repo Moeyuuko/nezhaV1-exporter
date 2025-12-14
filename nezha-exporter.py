@@ -23,7 +23,7 @@ ws_timestamp = 0  # WebSocket 返回的时间戳（毫秒级）
 service_data_cache = {}  # {server_id: [monitor_data_list]}
 service_last_update = {}  # {server_id: timestamp}
 SERVICE_DATA_EXPIRE_SECONDS = 120  # 服务数据过期时间（秒），比主数据长一些
-SERVICE_DATA_POINTS_COUNT = 3  # 每个监控节点输出的数据点数量
+SERVICE_DATA_POINTS_COUNT = 1  # 每个监控节点输出的数据点数量
 
 # Basic Auth 认证信息（可选）
 auth_username = None
@@ -465,7 +465,7 @@ async def main(url, group_url, service_url=None, username=None, password=None):
 
 
 if __name__ == "__main__":
-    print("Version：0.1.2", flush=True)
+    print("Version：0.1.3", flush=True)
     print("Starting nezha-exporter...", flush=True)
     url = os.getenv("WS_URL")
     group_url = os.getenv("GROUP_URL")

@@ -10,74 +10,12 @@
 - 支持本地运行和 Docker 部署
 - **[新功能]** 支持网络延迟监控（Service Monitor），采集各服务器到监控节点的延迟数据
 
-## 架构流程图
+## 快速开始
 
-```mermaid
-flowchart LR
-    A[Nezha 监控平台] -- WebSocket 推送 --> B[nezhaV1-exporter]
-    A -- Service API --> B
-    B -- HTTP 提供数据 --> C[Prometheus]
-    C -- 数据展示 --> D[Grafana]
-    subgraph Docker
-        B
-    end
-```
-
-### 数据处理流程
-
-```mermaid
-flowchart TD
-    A[接收 WS 数据] --> B[解析服务器数据]
-    B --> B1{"检测 uptime 变化"}
-    B1 -- "有变化" --> B2[更新时间戳]
-    B1 -- "无变化" --> B3[跳过时间戳更新]
-    B2 --> B4[缓存服务器数据]
-    B3 --> B4
-    G[获取分组信息] --> H[group_map 缓存]
-    
-    subgraph 服务监控模块
-        S1[定时获取在线服务器列表] --> S2[并发请求 Service API]
-        S2 --> S3[解析延迟数据]
-        S3 --> S4[缓存服务监控数据]
-    end
-    
-    B4 --> S1
-    B4 --> C["/metrics 请求"]
-    C --> D[过滤过期服务器]
-    D --> D1[添加分组信息]
-    H -.-> D1
-    D1 --> D2{服务监控已启用?}
-    D2 -- "是" --> D3[追加服务监控指标]
-    S4 -.-> D3
-    D2 -- "否" --> E["返回数据<br/>(含分组信息)"]
-    D3 --> E
-```
-
-### 数据过期机制
-
-- 通过检测 `uptime` 是否变化来判断服务器是否真正在线
-- 服务器离线后，`uptime` 停止变化，超过 60 秒后该服务器的指标自动从输出中移除
-- 服务器重新上线后，指标自动恢复
-
-### 时间戳支持
-
-- 所有服务器基础指标均带有毫秒级时间戳（来自 WebSocket 的 `now` 字段）
-- 指标格式：`metric_name{labels} value timestamp`
-- 示例：`nezha_cpu{id="11",name="MoeSG",group="default"} 1.147 1765719627000`
-
-### 多分组支持
-
-- 支持主机同时属于多个分组
-- Prometheus 指标会为每个分组单独输出一条记录
-
-> 详细的数据处理流程请参阅 [nezha-exporter.md](nezha-exporter.md)
-
-## 依赖要求
+### 依赖要求
 
 - Python 3.10+
 - 依赖库：`websockets`、`aiohttp`
-
-## 快速开始
 
 ### 1. 本地运行
 
@@ -147,13 +85,6 @@ flowchart TD
    docker-compose up -d
    ```
 
-## HTTP API
-
-| 端点路径 | 响应类型 | 说明 |
-|---------|---------|------|
-| `/metrics` | text/plain | 返回 Prometheus 格式的指标数据（已过滤过期服务器，包含分组标签） |
-| `/latest_message.prom` | text/plain | 同 `/metrics`，兼容旧版 |
-
 ## 配置说明
 
 | 环境变量 | 必填 | 说明 |
@@ -165,7 +96,16 @@ flowchart TD
 | `AUTH_USERNAME` | 否 | Basic Auth 用户名（与 `AUTH_PASSWORD` 同时设置时生效） |
 | `AUTH_PASSWORD` | 否 | Basic Auth 密码（与 `AUTH_USERNAME` 同时设置时生效） |
 
-### 服务监控功能（Service Monitor）
+## HTTP API
+
+| 端点路径 | 响应类型 | 说明 |
+|---------|---------|------|
+| `/metrics` | text/plain | 返回 Prometheus 格式的指标数据（已过滤过期服务器，包含分组标签） |
+| `/latest_message.prom` | text/plain | 同 `/metrics`，兼容旧版 |
+
+> **建议配置**：Prometheus 抓取间隔建议设置为 1 分钟（`scrape_interval: 1m`），与服务监控数据更新频率一致。
+
+## 服务监控功能（Service Monitor）
 
 服务监控功能可以采集各服务器到监控节点的网络延迟数据。启用后，会定期从 Service API 获取所有在线服务器的延迟监控数据，并以 Prometheus 格式暴露。
 
@@ -185,7 +125,7 @@ nezha_mem_used{id="11",name="MoeSG",group="default"} 632926208 1765719627000
 nezha_service_avg_delay_ms{id="12",name="MoeGZ",group="默认",monitor_id="2",monitor_name="AWS_SG_ipv6"} 97.018 1765626600000
 ```
 
-> 注：所有指标均带有毫秒级时间戳。基础指标时间戳来自 WebSocket 的 `now` 字段，服务监控指标时间戳来自 API 返回的 `created_at` 字段。每个监控节点输出最新 3 个数据点。标签名与基础指标保持一致（id, name, group）。
+> 注：所有指标均带有毫秒级时间戳。基础指标时间戳来自 WebSocket 的 `now` 字段，服务监控指标时间戳来自 API 返回的 `created_at` 字段。每个监控节点输出最新 1 个数据点。标签名与基础指标保持一致（id, name, group）。
 
 **标签说明：**
 
@@ -208,7 +148,7 @@ docker run -d --name nezha-exporter \
   -p 8009:8080 nezha-exporter
 ```
 
-### Basic Auth 认证
+## Basic Auth 认证
 
 如果你的 Nezha 监控平台启用了 HTTP Basic Auth 认证，可以通过设置 `AUTH_USERNAME` 和 `AUTH_PASSWORD` 环境变量来传入认证信息。
 
@@ -268,6 +208,74 @@ services:
   详细导入说明请参阅 [GrafanaPanel/README.md](GrafanaPanel/README.md)
 
 - Grafana 演示地址：[Nezha 监控数据 Dashboard 示例](https://grafana2.moeyuuko.com/dashboards/f/df72tiitcn6dcd/)
+
+---
+
+## 技术细节
+
+### 架构流程图
+
+```mermaid
+flowchart LR
+    A[Nezha 监控平台] -- WebSocket 推送 --> B[nezhaV1-exporter]
+    A -- Service API --> B
+    B -- HTTP 提供数据 --> C[Prometheus]
+    C -- 数据展示 --> D[Grafana]
+    subgraph Docker
+        B
+    end
+```
+
+### 数据处理流程
+
+```mermaid
+flowchart TD
+    A[接收 WS 数据] --> B[解析服务器数据]
+    B --> B1{"检测 uptime 变化"}
+    B1 -- "有变化" --> B2[更新时间戳]
+    B1 -- "无变化" --> B3[跳过时间戳更新]
+    B2 --> B4[缓存服务器数据]
+    B3 --> B4
+    G[获取分组信息] --> H[group_map 缓存]
+    
+    subgraph 服务监控模块
+        S1[定时获取在线服务器列表] --> S2[并发请求 Service API]
+        S2 --> S3[解析延迟数据]
+        S3 --> S4[缓存服务监控数据]
+    end
+    
+    B4 --> S1
+    B4 --> C["/metrics 请求"]
+    C --> D[过滤过期服务器]
+    D --> D1[添加分组信息]
+    H -.-> D1
+    D1 --> D2{服务监控已启用?}
+    D2 -- "是" --> D3[追加服务监控指标]
+    S4 -.-> D3
+    D2 -- "否" --> E["返回数据<br/>(含分组信息)"]
+    D3 --> E
+```
+
+### 数据过期机制
+
+- 通过检测 `uptime` 是否变化来判断服务器是否真正在线
+- 服务器离线后，`uptime` 停止变化，超过 60 秒后该服务器的指标自动从输出中移除
+- 服务器重新上线后，指标自动恢复
+
+### 时间戳支持
+
+- 所有服务器基础指标均带有毫秒级时间戳（来自 WebSocket 的 `now` 字段）
+- 指标格式：`metric_name{labels} value timestamp`
+- 示例：`nezha_cpu{id="11",name="MoeSG",group="default"} 1.147 1765719627000`
+
+### 多分组支持
+
+- 支持主机同时属于多个分组
+- Prometheus 指标会为每个分组单独输出一条记录
+
+> 详细的数据处理流程请参阅 [nezha-exporter.md](nezha-exporter.md)
+
+---
 
 ## 贡献方式
 

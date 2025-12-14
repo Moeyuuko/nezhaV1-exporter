@@ -267,7 +267,7 @@ services:
 
   详细导入说明请参阅 [GrafanaPanel/README.md](GrafanaPanel/README.md)
 
-- Grafana 演示地址：[Nezha 监控数据 Dashboard 示例](https://grafana2.moeyuuko.com/d/edsum8gy9f08we/nezha)
+- Grafana 演示地址：[Nezha 监控数据 Dashboard 示例](https://grafana2.moeyuuko.com/dashboards/f/df72tiitcn6dcd/)
 
 ## 贡献方式
 

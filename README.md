@@ -58,22 +58,36 @@
 
 ### 2. Docker 部署
 
-1. 构建镜像
+#### 方式一：使用预构建镜像
 
-   ```bash
-   docker build -t nezha-exporter .
-   ```
+```bash
+# 拉取镜像
+docker pull ghcr.io/moeyuuko/nezhav1-exporter:latest
 
-2. 运行容器（需设置环境变量 WS_URL 和 GROUP_URL）
+# 运行容器
+docker run -d --name nezha-exporter \
+  -e WS_URL=wss://nezha.example.com/api/v1/ws/server \
+  -e GROUP_URL=https://nezha.example.com/api/v1/server-group \
+  -p 8009:8080 \
+  ghcr.io/moeyuuko/nezhav1-exporter:latest
+```
 
-   ```bash
-   docker run -d --name nezha-exporter \
-     -e WS_URL=wss://nezha.example.com/api/v1/ws/server \
-     -e GROUP_URL=https://nezha.example.com/api/v1/server-group \
-     -p 8009:8080 nezha-exporter
-   ```
+可用镜像标签：`latest`、`v0.1.3`
 
-   - 其中 `-p 8009:8080` 表示将主机 8009 端口映射到容器 8080 端口
+#### 方式二：本地构建镜像
+
+```bash
+# 构建镜像
+docker build -t nezha-exporter .
+
+# 运行容器
+docker run -d --name nezha-exporter \
+  -e WS_URL=wss://nezha.example.com/api/v1/ws/server \
+  -e GROUP_URL=https://nezha.example.com/api/v1/server-group \
+  -p 8009:8080 nezha-exporter
+```
+
+> `-p 8009:8080` 表示将主机 8009 端口映射到容器 8080 端口
 
 ### 3. Docker Compose 部署
 

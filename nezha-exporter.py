@@ -320,14 +320,14 @@ async def fetch_service_data(session, base_url, server_id, auth=None):
     
     Args:
         session: aiohttp ClientSession
-        base_url: 服务监控 API 基础 URL (如 https://nezha.example.com/api/v1/service)
+        base_url: 服务监控 API 基础 URL (如 https://nezha.example.com/api/v1/server)
         server_id: 服务器 ID
         auth: BasicAuth 对象（可选）
     
     Returns:
         list: 监控数据列表，失败返回空列表
     """
-    url = f"{base_url}/{server_id}"
+    url = f"{base_url}/{server_id}/service?period=1d"
     try:
         async with session.get(url, auth=auth) as resp:
             if resp.status == 200:

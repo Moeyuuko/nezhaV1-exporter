@@ -34,7 +34,7 @@
 
    # Windows（启用服务监控，可选）
    set SERVICE_MONITOR_ENABLED=true
-   set SERVICE_URL=https://nezha.example.com/api/v1/service
+   set SERVICE_URL=https://nezha.example.com/api/v1/server
 
    # Linux/Mac（基础配置）
    export WS_URL=wss://nezha.example.com/api/v1/ws/server
@@ -42,7 +42,7 @@
 
    # Linux/Mac（启用服务监控，可选）
    export SERVICE_MONITOR_ENABLED=true
-   export SERVICE_URL=https://nezha.example.com/api/v1/service
+   export SERVICE_URL=https://nezha.example.com/api/v1/server
    ```
 
 3. 启动程序
@@ -106,7 +106,7 @@ docker run -d --name nezha-exporter \
 | `WS_URL` | 是 | 哪吒监控 WebSocket 地址，例如 `wss://nezha.example.com/api/v1/ws/server` |
 | `GROUP_URL` | 是 | 分组信息 API 地址，例如 `https://nezha.example.com/api/v1/server-group` |
 | `SERVICE_MONITOR_ENABLED` | 否 | 是否启用服务监控功能，可选值：`true`/`false`（默认 `false`） |
-| `SERVICE_URL` | 否* | 服务监控 API 地址，例如 `https://nezha.example.com/api/v1/service`<br/>*当 `SERVICE_MONITOR_ENABLED=true` 时必填 |
+| `SERVICE_URL` | 否* | 服务监控 API 地址，例如 `https://nezha.example.com/api/v1/server`<br/>*当 `SERVICE_MONITOR_ENABLED=true` 时必填 |
 | `AUTH_USERNAME` | 否 | Basic Auth 用户名（与 `AUTH_PASSWORD` 同时设置时生效） |
 | `AUTH_PASSWORD` | 否 | Basic Auth 密码（与 `AUTH_USERNAME` 同时设置时生效） |
 
@@ -158,7 +158,7 @@ docker run -d --name nezha-exporter \
   -e WS_URL=wss://nezha.example.com/api/v1/ws/server \
   -e GROUP_URL=https://nezha.example.com/api/v1/server-group \
   -e SERVICE_MONITOR_ENABLED=true \
-  -e SERVICE_URL=https://nezha.example.com/api/v1/service \
+  -e SERVICE_URL=https://nezha.example.com/api/v1/server \
   -p 8009:8080 nezha-exporter
 ```
 
@@ -202,7 +202,7 @@ services:
       WS_URL: wss://nezha.example.com/api/v1/ws/server
       GROUP_URL: https://nezha.example.com/api/v1/server-group
       SERVICE_MONITOR_ENABLED: "true"
-      SERVICE_URL: https://nezha.example.com/api/v1/service
+      SERVICE_URL: https://nezha.example.com/api/v1/server
       AUTH_USERNAME: your_username  # 可选
       AUTH_PASSWORD: your_password  # 可选
     ports:

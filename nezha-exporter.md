@@ -206,7 +206,7 @@ flowchart TD
     A["service_monitor_loop 启动"] --> B["获取在线服务器列表<br/>get_online_servers()"]
     B --> C{"有在线服务器?"}
     C -- "否" --> D["跳过本次采集"]
-    C -- "是" --> E["并发请求 Service API<br/>GET /api/v1/service/{server_id}"]
+    C -- "是" --> E["并发请求 Service API<br/>GET /api/v1/server/{server_id}/service?period=1d"]
     E --> F["解析响应数据"]
     F --> G{"success == true?"}
     G -- "否" --> H["记录错误日志"]
